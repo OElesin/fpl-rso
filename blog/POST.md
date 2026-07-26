@@ -24,33 +24,7 @@ The core insight: FPL is a **near-perfect testbed** for RSI:
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                  OUTER LOOP (Strands Agent)                   │
-│                                                               │
-│   ┌─────────────────────┐     ┌───────────────────────────┐ │
-│   │    INNER AGENT       │     │      STRANDS AGENT         │ │
-│   │    strategy.py       │◄────│                            │ │
-│   │                      │     │  Tools:                    │ │
-│   │  select_transfers()  │     │   • read_current_strategy  │ │
-│   │  select_captain()    │     │   • read_eval_results      │ │
-│   │  select_lineup()     │     │   • read_failed_attempts   │ │
-│   │  select_chip()       │     │   • read_iteration_info    │ │
-│   │                      │     │   • validate_code          │ │
-│   │  ← rewritten each   │     │   • write_candidate        │ │
-│   │    iteration         │     │                            │ │
-│   └──────────┬───────────┘     │  Model: Bedrock            │ │
-│              │                  │  (Claude/Nova/Llama)       │ │
-│              ▼                  └─────────────▲──────────────┘ │
-│   ┌─────────────────────┐                    │                │
-│   │   EVAL HARNESS       │                    │                │
-│   │                      │  score feedback    │                │
-│   │  Public GWs  → feedback ──────────────────┘                │
-│   │  Private GWs → selection signal                            │
-│   │  Backtest across seasons                                   │
-│   └─────────────────────┘                                      │
-└─────────────────────────────────────────────────────────────┘
-```
+![Architecture](svg/architecture.svg)
 
 ---
 
@@ -65,13 +39,7 @@ The system has two loops, just like AIDE²:
 
 Unlike a single-shot prompt ("here's the code, improve it"), our outer loop uses [Strands Agents SDK](https://strandsagents.com) to create a **multi-step reasoning agent** with tools. Each iteration, the agent:
 
-```
-READ ──→ ANALYZE ──→ DRAFT ──→ VALIDATE ──→ SUBMIT
- │                              │       ▲
- │  Inspect code & results      │       │
- │                              │  retry if invalid
- │                              └───────┘
-```
+![Agent Workflow](svg/agent-workflow.svg)
 
 1. **Read** — calls `read_current_strategy()` and `read_eval_results()` to understand the current state
 2. **Analyze** — calls `read_failed_attempts()` to avoid repeating mistakes, `read_iteration_info()` to calibrate aggressiveness
@@ -87,18 +55,7 @@ This multi-step approach means the agent catches its own syntax errors, avoids r
 
 The key anti-overfitting mechanism (borrowed from AIDE²) is the **public/private gameweek split**:
 
-```
-Season Gameweeks (38 total)
-├─────────────────────────────────┤──────────────────────┤
-│     PUBLIC (60%)                 │   PRIVATE (40%)       │
-│     visible to proposer          │   selection signal    │
-│     as feedback                  │   (agent never sees)  │
-└─────────────────────────────────┴──────────────────────┘
-
-• Agent sees public scores → proposes strategy changes
-• But ONLY private score improvement → keeps the change
-• This prevents overfitting to specific gameweeks
-```
+![Public/Private Split](svg/public-private-split.svg)
 
 ---
 
@@ -145,25 +102,7 @@ agent("Improve the FPL strategy.")
 
 Following AIDE²'s framework, we define an FPL-specific RSI ladder:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Level 3 · Inflection                                        │
-│  Progress accelerates at fixed budget — FPL intelligence     │
-│  explosion                                                   │
-├─────────────────────────────────────────────────────────────┤
-│  Level 2 · Ignition                                          │
-│  Discovered agent becomes a better outer-loop optimizer      │
-│  than its predecessor                                        │
-├─────────────────────────────────────────────────────────────┤
-│  Level 1 · Net Positive  ← TARGET                            │
-│  Beats hand-tuned strategy on held-out seasons.              │
-│  Generalizes across metas.                                   │
-├─────────────────────────────────────────────────────────────┤
-│  Level 0 · Delegation                                        │
-│  System runs autonomously but improves slower than           │
-│  manual FPL tuning                                           │
-└─────────────────────────────────────────────────────────────┘
-```
+![RSI Ladder](svg/rsi-ladder.svg)
 
 ---
 
@@ -212,20 +151,7 @@ python scripts/run.py --model nova-lite --iterations 100
 
 The Strands proposer agent can be deployed serverlessly to [Amazon Bedrock AgentCore Runtime](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html) — a secure, serverless runtime purpose-built for AI agents. This separates the heavy LLM reasoning from the local backtest loop.
 
-```
-LOCAL                                  AGENTCORE RUNTIME
-┌─────────────────────────┐           ┌─────────────────────────┐
-│ scripts/run.py           │  invoke   │ deploy/app.py            │
-│                          ├──────────►│                          │
-│ • Load historical data   │           │ • Strands Agent reasoning│
-│ • Run backtest eval      │ candidate │ • Tool calls (6 tools)   │
-│ • Selection (keep/reject)│◄──────────┤ • Code validation + retry│
-│ • State management       │           │ • Candidate generation   │
-│                          │           │                          │
-│ Fast, data-heavy, cheap  │           │ Serverless, isolated,    │
-│                          │           │ pay-per-use              │
-└─────────────────────────┘           └─────────────────────────┘
-```
+![AgentCore Deploy](svg/agentcore-deploy.svg)
 
 ### Why AgentCore?
 
