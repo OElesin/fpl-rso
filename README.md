@@ -1,34 +1,16 @@
 # FPL-RSO: Recursive Self-Optimizing Fantasy Premier League Agent
 
-Inspired by [AIDE² (Weco AI)](https://www.weco.ai/blog/first-evidence-of-recursive-self-improvement), this system applies recursive self-improvement to Fantasy Premier League decision-making.
+Inspired by [AIDE² (Weco AI)](https://www.weco.ai/blog/first-evidence-of-recursive-self-improvement), this system applies recursive self-improvement to Fantasy Premier League decision-making. Powered by [Strands Agents SDK](https://strandsagents.com) and [Amazon Bedrock](https://aws.amazon.com/bedrock/).
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────┐
-│                  OUTER LOOP                       │
-│  (rewrites inner agent strategy code via LLM)    │
-│                                                   │
-│   ┌───────────────────────────────────────────┐  │
-│   │              INNER AGENT                   │  │
-│   │  (makes FPL decisions each gameweek)       │  │
-│   │                                            │  │
-│   │  • Transfer selection                      │  │
-│   │  • Captain pick                            │  │
-│   │  • Lineup / bench order                    │  │
-│   │  • Chip timing (WC, BB, TC, FH)           │  │
-│   └───────────────────────────────────────────┘  │
-│                                                   │
-│   ┌───────────────────────────────────────────┐  │
-│   │           EVALUATION HARNESS               │  │
-│   │  (backtests inner agent over seasons)      │  │
-│   │                                            │  │
-│   │  • Public score (visible to inner agent)   │  │
-│   │  • Private score (selection signal)        │  │
-│   │  • Cost budget constraint                  │  │
-│   └───────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────┘
-```
+![Architecture](blog/svg/architecture.svg)
+
+### Deployment Mode: Bedrock AgentCore Runtime
+
+The Strands proposer agent can run locally or be deployed to [Amazon Bedrock AgentCore Runtime](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html) for serverless, pay-per-use execution.
+
+![AgentCore Deployment](blog/svg/agentcore-deploy.svg)
 
 ## Directory Structure
 
@@ -38,15 +20,20 @@ fpl-rso/
 │   ├── strategy.py    # Core decision logic (what the outer loop rewrites)
 │   └── player.py      # Player evaluation utilities
 ├── outer_loop/        # Meta-optimizer that improves the inner agent
-│   ├── optimizer.py   # LLM-driven rewrite loop
-│   └── proposer.py    # Generates candidate rewrites
-├── data/              # Data fetching and loading
-│   ├── fetcher.py     # Downloads FPL historical data
-│   └── loader.py      # Normalizes data into dataframes
+│   ├── optimizer.py   # Strands Agent-driven rewrite loop
+│   └── proposer.py    # Multi-step reasoning agent with 6 tools
 ├── eval/              # Backtest engine
 │   ├── backtest.py    # Simulates a season of FPL decisions
 │   ├── scorer.py      # Computes public/private scores
 │   └── constraints.py # Budget and rule enforcement
+├── data/              # Data fetching and loading
+│   ├── fetcher.py     # Downloads FPL historical data
+│   └── loader.py      # Normalizes data into dataframes
+├── deploy/            # Bedrock AgentCore Runtime deployment
+│   ├── app.py         # BedrockAgentCoreApp entrypoint
+│   ├── Dockerfile     # Container image for AgentCore
+│   └── README.md      # Deployment instructions
+├── blog/              # Technical blog post + animated SVGs
 ├── config/            # Configuration
 │   └── settings.yaml  # Seasons, budgets, model, loop params
 ├── scripts/           # Entry points
@@ -62,19 +49,34 @@ fpl-rso/
 pip install -r requirements.txt
 
 # Fetch historical data
-python -m data.fetcher
+python scripts/run.py --fetch-data
 
-# Run the RSI loop
+# Evaluate the baseline agent
+python scripts/run.py --eval-only
+
+# Run the RSI loop locally (default: Claude Sonnet 5, 50 iterations)
 python scripts/run.py
+
+# Or deploy proposer to AgentCore and run remotely
+python scripts/run.py --agentcore-arn arn:aws:bedrock:us-east-1:<account>:agent-runtime/fpl-rso-proposer
 ```
 
 ## How It Works
 
 1. **Inner agent** starts with a hand-coded baseline strategy (form-weighted captain picks, simple transfer logic).
 2. **Evaluation harness** backtests the agent across historical gameweeks, producing a score.
-3. **Outer loop** uses an LLM to propose modifications to the inner agent's strategy code.
+3. **Outer loop (Strands Agent)** uses multi-step reasoning with tools to propose modifications to the inner agent's strategy code.
 4. If the modified agent scores higher on *private* gameweeks (ones it wasn't optimized on), the change is kept.
 5. Repeat. Each iteration produces a potentially better agent.
+
+### Two Execution Modes
+
+| Mode | Command | Best for |
+|------|---------|----------|
+| **Local** | `python scripts/run.py` | Development, quick testing |
+| **AgentCore** | `python scripts/run.py --agentcore-arn <arn>` | Production, unattended runs |
+
+In both modes, the backtest runs locally (fast, needs data). Only the LLM reasoning step differs in where it executes.
 
 ## RSI Level Target
 
