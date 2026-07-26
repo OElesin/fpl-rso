@@ -57,7 +57,7 @@ class OuterLoopConfig:
     """Configuration for the outer optimization loop."""
 
     max_iterations: int = 50
-    model: str = "claude-sonnet"  # Bedrock model short name or full model ID
+    model: str = "claude-sonnet-5"  # Bedrock model short name or full model ID
     region: str = "us-east-1"  # AWS region for Bedrock
     profile: str | None = None  # AWS profile (uses default creds if None)
     backtest_seasons: list[str] = None

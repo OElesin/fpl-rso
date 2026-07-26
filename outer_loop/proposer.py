@@ -209,6 +209,7 @@ Your goal: rewrite the inner agent's strategy code to score MORE POINTS on held-
 # ---------------------------------------------------------------------------
 
 BEDROCK_MODELS = {
+    "claude-sonnet-5": "us.anthropic.claude-sonnet-5",
     "claude-sonnet": "us.anthropic.claude-sonnet-4-6",
     "claude-haiku": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
     "claude-opus": "us.anthropic.claude-opus-4-7",
@@ -219,7 +220,7 @@ BEDROCK_MODELS = {
     "llama4-scout": "us.meta.llama4-scout-17b-instruct-v1:0",
 }
 
-DEFAULT_MODEL = "claude-sonnet"
+DEFAULT_MODEL = "claude-sonnet-5"
 
 
 def _resolve_model_id(model: str) -> str:
@@ -238,7 +239,7 @@ def generate_candidate(
     iteration: int,
     max_iterations: int,
     failed_attempts: list[str],
-    model: str = "claude-sonnet",
+    model: str = "claude-sonnet-5",
     region: str = "us-east-1",
     profile: str | None = None,
 ) -> str | None:
@@ -275,9 +276,20 @@ def generate_candidate(
     model_kwargs = {
         "model_id": model_id,
         "region_name": region,
-        "temperature": 0.7,
         "max_tokens": 16000,
+        "additional_request_fields": {},
     }
+
+    # Some models (e.g., claude-sonnet-5) don't support temperature
+    if "sonnet-5" not in model_id and "opus-5" not in model_id:
+        model_kwargs["temperature"] = 0.7
+
+    # Increase timeout for large code generation responses
+    import botocore.config
+    model_kwargs["boto_client_config"] = botocore.config.Config(
+        read_timeout=300,
+        connect_timeout=30,
+    )
 
     bedrock_model = BedrockModel(**model_kwargs)
 

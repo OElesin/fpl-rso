@@ -4,7 +4,7 @@
 # Outer loop settings (Strands Agent + Amazon Bedrock)
 outer_loop:
   max_iterations: 50          # Number of rewrite attempts
-  model: "claude-sonnet"      # Bedrock model (see short names below)
+  model: "claude-sonnet-5"      # Bedrock model (see short names below)
   region: "us-east-1"         # AWS region for Bedrock API
   profile: null               # AWS profile name (null = default credentials)
   improvement_threshold: 0.1  # Min private score gain to keep a rewrite (pts/GW)

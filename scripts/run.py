@@ -100,7 +100,7 @@ def run_loop(args):
     # CLI args override config file
     loop_config = OuterLoopConfig(
         max_iterations=args.iterations or outer_cfg.get("max_iterations", 50),
-        model=args.model or outer_cfg.get("model", "claude-sonnet"),
+        model=args.model or outer_cfg.get("model", "claude-sonnet-5"),
         region=args.region or outer_cfg.get("region", "us-east-1"),
         profile=args.profile or outer_cfg.get("profile"),
         backtest_seasons=args.seasons or bt_cfg.get("seasons", ["2022-23", "2023-24"]),
