@@ -1,0 +1,30 @@
+<svg viewBox="0 0 720 360" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="360" fill="#0a0a0f" rx="12"/>
+
+  <!-- Level 0 -->
+  <rect x="60" y="280" width="600" height="55" rx="8" fill="#12121a" stroke="#8888a0" stroke-width="1.5"/>
+  <text x="80" y="305" fill="#8888a0" font-size="12" font-weight="600" font-family="monospace">Level 0 · Delegation</text>
+  <text x="80" y="323" fill="#8888a0" font-size="10" font-family="sans-serif">System runs autonomously but improves slower than manual FPL tuning</text>
+
+  <!-- Level 1 (highlighted) -->
+  <rect x="60" y="210" width="600" height="55" rx="8" fill="#00b89415" stroke="#00b894" stroke-width="2">
+    <animate attributeName="stroke-opacity" values="0.5;1;0.5" dur="2s" repeatCount="indefinite"/>
+  </rect>
+  <text x="80" y="235" fill="#00b894" font-size="12" font-weight="600" font-family="monospace">Level 1 · Net Positive ← TARGET</text>
+  <text x="80" y="253" fill="#00b894" font-size="10" font-family="sans-serif">Beats hand-tuned strategy on held-out seasons. Generalizes across metas.</text>
+
+  <!-- Level 2 -->
+  <rect x="60" y="140" width="600" height="55" rx="8" fill="#12121a" stroke="#6c5ce7" stroke-width="1.5"/>
+  <text x="80" y="165" fill="#6c5ce7" font-size="12" font-weight="600" font-family="monospace">Level 2 · Ignition</text>
+  <text x="80" y="183" fill="#8888a0" font-size="10" font-family="sans-serif">Discovered agent becomes a better outer-loop optimizer than its predecessor</text>
+
+  <!-- Level 3 -->
+  <rect x="60" y="70" width="600" height="55" rx="8" fill="#12121a" stroke="#fd79a8" stroke-width="1.5"/>
+  <text x="80" y="95" fill="#fd79a8" font-size="12" font-weight="600" font-family="monospace">Level 3 · Inflection</text>
+  <text x="80" y="113" fill="#8888a0" font-size="10" font-family="sans-serif">Progress accelerates at fixed budget — FPL intelligence explosion</text>
+
+  <!-- Arrow indicating progress -->
+  <text x="35" y="180" fill="#00b894" font-size="16" text-anchor="middle">▲</text>
+  <text x="35" y="250" fill="#00b894" font-size="16" text-anchor="middle">●</text>
+  <line x1="35" y1="190" x2="35" y2="240" stroke="#00b894" stroke-width="2"/>
+</svg>
