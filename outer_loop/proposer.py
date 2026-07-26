@@ -209,11 +209,12 @@ Your goal: rewrite the inner agent's strategy code to score MORE POINTS on held-
 # ---------------------------------------------------------------------------
 
 BEDROCK_MODELS = {
-    "claude-sonnet": "us.anthropic.claude-sonnet-4-20250514-v1:0",
-    "claude-haiku": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
-    "claude-opus": "us.anthropic.claude-opus-4-20250514-v1:0",
+    "claude-sonnet": "us.anthropic.claude-sonnet-4-6",
+    "claude-haiku": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "claude-opus": "us.anthropic.claude-opus-4-7",
     "nova-pro": "us.amazon.nova-pro-v1:0",
     "nova-lite": "us.amazon.nova-lite-v1:0",
+    "nova-premier": "us.amazon.nova-premier-v1:0",
     "llama4-maverick": "us.meta.llama4-maverick-17b-instruct-v1:0",
     "llama4-scout": "us.meta.llama4-scout-17b-instruct-v1:0",
 }

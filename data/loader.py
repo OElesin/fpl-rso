@@ -93,17 +93,21 @@ def load_season(season: str) -> SeasonData:
     # Normalize column names
     rename = {}
     for orig, standard in COLUMN_MAP.items():
-        if orig in df.columns and standard not in df.columns:
-            rename[orig] = standard
+        if orig in df.columns and standard not in rename.values():
+            if standard not in df.columns or orig == standard:
+                rename[orig] = standard
     df = df.rename(columns=rename)
 
-    # Ensure gameweek column exists
+    # Ensure gameweek column exists (handle duplicates from rename)
     if "gameweek" not in df.columns:
-        # Try to infer from 'round' or 'GW'
         for col in ["round", "GW"]:
             if col in df.columns:
                 df["gameweek"] = df[col]
                 break
+
+    # If gameweek ended up as a DataFrame (duplicate columns), take first
+    if hasattr(df.get("gameweek"), "ndim") and df["gameweek"].ndim > 1:
+        df["gameweek"] = df["gameweek"].iloc[:, 0]
 
     # Normalize position
     if "position" in df.columns:
