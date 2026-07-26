@@ -1,0 +1,63 @@
+# FPL-RSO Configuration
+# =====================
+
+# Outer loop settings (Strands Agent + Amazon Bedrock)
+outer_loop:
+  max_iterations: 50          # Number of rewrite attempts
+  model: "claude-sonnet"      # Bedrock model (see short names below)
+  region: "us-east-1"         # AWS region for Bedrock API
+  profile: null               # AWS profile name (null = default credentials)
+  improvement_threshold: 0.1  # Min private score gain to keep a rewrite (pts/GW)
+
+  # AgentCore Runtime (optional — run proposer as a serverless service)
+  # Set this to your deployed AgentCore ARN to invoke remotely instead of locally.
+  # Deploy with: agentcore deploy (see deploy/README.md)
+  agentcore_arn: null         # e.g. "arn:aws:bedrock:us-east-1:123456789012:agent-runtime/fpl-rso-proposer"
+
+  # The outer loop uses a Strands Agent with tools:
+  #   - read_current_strategy: reads the inner agent's code
+  #   - read_eval_results: reads backtest performance metrics
+  #   - read_failed_attempts: reviews what didn't work before
+  #   - read_iteration_info: gets iteration context
+  #   - validate_code: syntax-checks proposed code before submission
+  #   - write_candidate: submits the final rewrite
+  #
+  # This multi-step reasoning beats single-shot prompting by:
+  #   - Self-validating code before submission (fewer wasted eval cycles)
+  #   - Analyzing weaknesses before proposing fixes (targeted improvements)
+  #   - Learning from failed attempts (avoids repeating mistakes)
+
+  # Available model short names:
+  #   claude-sonnet   → us.anthropic.claude-sonnet-4-20250514-v1:0 (recommended)
+  #   claude-haiku    → us.anthropic.claude-3-5-haiku-20241022-v1:0 (fast/cheap)
+  #   claude-opus     → us.anthropic.claude-opus-4-20250514-v1:0 (most capable)
+  #   nova-pro        → us.amazon.nova-pro-v1:0
+  #   nova-lite       → us.amazon.nova-lite-v1:0 (cheapest)
+  #   llama4-maverick → us.meta.llama4-maverick-17b-instruct-v1:0
+  #   llama4-scout    → us.meta.llama4-scout-17b-instruct-v1:0
+  #
+  # Or use a full Bedrock model ID directly.
+
+# Backtest settings
+backtest:
+  seasons:                    # Seasons to backtest on
+    - "2022-23"
+    - "2023-24"
+  public_gw_ratio: 0.6       # Fraction of gameweeks visible to inner agent
+  random_seed: 42             # Deterministic public/private split
+  start_gameweek: 5           # Skip first N GWs (need form history)
+  form_window: 5              # Rolling average window for player form
+
+# Data settings
+data:
+  seasons_to_fetch:           # Which seasons to download
+    - "2020-21"
+    - "2021-22"
+    - "2022-23"
+    - "2023-24"
+    - "2024-25"
+
+# Output settings
+output:
+  run_dir: "outer_loop/runs"  # Where optimization runs are saved
+  log_level: "info"           # info, debug, quiet

@@ -1,0 +1,28 @@
+# Data
+data/raw/
+*.csv
+
+# Outer loop runs (large, generated)
+outer_loop/runs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env

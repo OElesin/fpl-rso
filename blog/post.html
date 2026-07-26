@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FPL-RSO: Recursive Self-Improvement for Fantasy Premier League</title>
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --surface: #12121a;
+            --border: #1e1e2e;
+            --text: #e0e0e8;
+            --muted: #8888a0;
+            --accent: #6c5ce7;
+            --accent2: #00cec9;
+            --accent3: #fd79a8;
+            --success: #00b894;
+            --warn: #fdcb6e;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            padding: 0;
+        }
+
+        .hero {
+            text-align: center;
+            padding: 80px 20px 60px;
+            background: linear-gradient(180deg, #12121a 0%, #0a0a0f 100%);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .hero h1 {
+            font-size: 2.8rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero .subtitle {
+            font-size: 1.2rem;
+            color: var(--muted);
+            max-width: 640px;
+            margin: 0 auto;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 60px 24px;
+        }
+
+        h2 {
+            font-size: 1.8rem;
+            margin: 48px 0 16px;
+            color: var(--text);
+        }
+
+        h3 {
+            font-size: 1.3rem;
+            margin: 32px 0 12px;
+            color: var(--accent2);
+        }
+
+        p { margin: 16px 0; color: var(--text); }
+
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        code {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 0.9em;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+
+        pre {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            overflow-x: auto;
+            margin: 20px 0;
+        }
+
+        pre code {
+            border: none;
+            padding: 0;
+            background: none;
+        }
+
+        .svg-container {
+            margin: 40px 0;
+            display: flex;
+            justify-content: center;
+        }
+
+        .svg-container svg {
+            max-width: 100%;
+            height: auto;
+        }
+
+        .callout {
+            background: var(--surface);
+            border-left: 4px solid var(--accent);
+            padding: 20px 24px;
+            border-radius: 0 8px 8px 0;
+            margin: 24px 0;
+        }
+
+        .callout.success { border-left-color: var(--success); }
+        .callout.warn { border-left-color: var(--warn); }
+
+        ul, ol {
+            padding-left: 24px;
+            margin: 12px 0;
+        }
+
+        li { margin: 8px 0; }
+
+        .tag {
+            display: inline-block;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2px 10px;
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin: 4px 2px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        th, td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th { color: var(--accent2); font-weight: 600; }
+    </style>
+</head>
+<body>
+
+<!-- HERO -->
+<section class="hero">
+    <h1>FPL-RSO</h1>
+    <p class="subtitle">
+        We applied recursive self-improvement to Fantasy Premier League.
+        A Strands Agent rewrites its own strategy code, backtests it, and keeps only what works —
+        discovering better FPL decisions than we could hand-tune.
+    </p>
+    <div style="margin-top: 20px;">
+        <span class="tag">Recursive Self-Improvement</span>
+        <span class="tag">Strands Agents SDK</span>
+        <span class="tag">Amazon Bedrock</span>
+        <span class="tag">Fantasy Premier League</span>
+    </div>
+</section>
+
+<div class="container">
+
+
+
+<!-- INTRO -->
+<h2>The Idea</h2>
+<p>
+    Inspired by <a href="https://www.weco.ai/blog/first-evidence-of-recursive-self-improvement">AIDE&sup2;</a>,
+    we built a system that applies recursive self-improvement (RSI) to Fantasy Premier League.
+    Instead of optimizing ML research agents, we optimize FPL decision-making agents —
+    and the results surprised us.
+</p>
+
+<p>
+    The core insight: FPL is a <strong>near-perfect testbed</strong> for RSI. It has a clear metric
+    (points), fast feedback (weekly), rich free data (FPL API), and the agent is pure code —
+    transfer decisions, captain picks, lineup selection, chip timing.
+</p>
+
+<div class="callout">
+    <strong>What is RSI?</strong> A system that improves its own ability to improve.
+    An outer loop rewrites the inner agent's code, evaluates it, and keeps only versions
+    that score higher on held-out data. Each iteration potentially produces a better agent.
+</div>
+
+<!-- ARCHITECTURE SVG -->
+<h2>Architecture</h2>
+
+<div class="svg-container">
+<svg viewBox="0 0 720 480" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="720" height="480" fill="#0a0a0f" rx="12"/>
+
+  <!-- Outer loop box -->
+  <rect x="30" y="30" width="660" height="420" rx="16" fill="none"
+        stroke="#6c5ce7" stroke-width="2" stroke-dasharray="8 4">
+    <animate attributeName="stroke-dashoffset" from="0" to="-24"
+             dur="3s" repeatCount="indefinite"/>
+  </rect>
+  <text x="50" y="60" fill="#6c5ce7" font-size="14" font-weight="600"
+        font-family="monospace">OUTER LOOP (Strands Agent)</text>
+
+  <!-- Inner agent box -->
+  <rect x="80" y="90" width="260" height="200" rx="12" fill="#12121a"
+        stroke="#00cec9" stroke-width="2"/>
+  <text x="100" y="120" fill="#00cec9" font-size="13" font-weight="600"
+        font-family="monospace">INNER AGENT</text>
+  <text x="100" y="150" fill="#e0e0e8" font-size="12" font-family="sans-serif">strategy.py</text>
+
+  <!-- Inner agent functions -->
+  <text x="100" y="178" fill="#8888a0" font-size="11" font-family="monospace">select_transfers()</text>
+  <text x="100" y="198" fill="#8888a0" font-size="11" font-family="monospace">select_captain()</text>
+  <text x="100" y="218" fill="#8888a0" font-size="11" font-family="monospace">select_lineup()</text>
+  <text x="100" y="238" fill="#8888a0" font-size="11" font-family="monospace">select_chip()</text>
+  <text x="100" y="268" fill="#fd79a8" font-size="11" font-family="monospace">← rewritten each iteration</text>
+
+  <!-- Eval harness box -->
+  <rect x="80" y="310" width="260" height="120" rx="12" fill="#12121a"
+        stroke="#fdcb6e" stroke-width="2"/>
+  <text x="100" y="340" fill="#fdcb6e" font-size="13" font-weight="600"
+        font-family="monospace">EVAL HARNESS</text>
+  <text x="100" y="368" fill="#8888a0" font-size="11" font-family="monospace">Public GWs (60%) → feedback</text>
+  <text x="100" y="388" fill="#8888a0" font-size="11" font-family="monospace">Private GWs (40%) → selection</text>
+  <text x="100" y="410" fill="#8888a0" font-size="11" font-family="monospace">Backtest across seasons</text>
+
+  <!-- Strands Agent box -->
+  <rect x="400" y="90" width="260" height="340" rx="12" fill="#12121a"
+        stroke="#6c5ce7" stroke-width="2"/>
+  <text x="420" y="120" fill="#6c5ce7" font-size="13" font-weight="600"
+        font-family="monospace">STRANDS AGENT</text>
+  <text x="420" y="145" fill="#e0e0e8" font-size="11" font-family="sans-serif">Multi-step reasoning:</text>
+
+  <!-- Tool list with animated dots -->
+  <circle cx="425" cy="172" r="4" fill="#00cec9">
+    <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" begin="0s" repeatCount="indefinite"/>
+  </circle>
+  <text x="438" y="176" fill="#8888a0" font-size="11" font-family="monospace">read_current_strategy()</text>
+
+  <circle cx="425" cy="200" r="4" fill="#00cec9">
+    <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" begin="0.3s" repeatCount="indefinite"/>
+  </circle>
+  <text x="438" y="204" fill="#8888a0" font-size="11" font-family="monospace">read_eval_results()</text>
+
+  <circle cx="425" cy="228" r="4" fill="#00cec9">
+    <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" begin="0.6s" repeatCount="indefinite"/>
+  </circle>
+  <text x="438" y="232" fill="#8888a0" font-size="11" font-family="monospace">read_failed_attempts()</text>
+
+  <circle cx="425" cy="256" r="4" fill="#00cec9">
+    <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" begin="0.9s" repeatCount="indefinite"/>
+  </circle>
+  <text x="438" y="260" fill="#8888a0" font-size="11" font-family="monospace">read_iteration_info()</text>
+
+  <circle cx="425" cy="284" r="4" fill="#fdcb6e">
+    <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" begin="1.2s" repeatCount="indefinite"/>
+  </circle>
+  <text x="438" y="288" fill="#8888a0" font-size="11" font-family="monospace">validate_code()</text>
+
+  <circle cx="425" cy="312" r="4" fill="#00b894">
+    <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" begin="1.5s" repeatCount="indefinite"/>
+  </circle>
+  <text x="438" y="316" fill="#8888a0" font-size="11" font-family="monospace">write_candidate()</text>
+
+  <!-- Bedrock badge -->
+  <rect x="420" y="345" width="220" height="60" rx="8" fill="#1a1a2e"
+        stroke="#6c5ce7" stroke-width="1"/>
+  <text x="440" y="370" fill="#6c5ce7" font-size="11" font-weight="600"
+        font-family="monospace">Amazon Bedrock</text>
+  <text x="440" y="390" fill="#8888a0" font-size="10" font-family="monospace">Claude Sonnet / Nova / Llama</text>
+
+  <!-- Arrows -->
+  <!-- Inner agent → Eval -->
+  <path d="M 210 290 L 210 310" stroke="#fdcb6e" stroke-width="2"
+        marker-end="url(#arrow-yellow)"/>
+
+  <!-- Eval → Strands (score feedback) -->
+  <path d="M 340 370 L 400 370" stroke="#fdcb6e" stroke-width="1.5"
+        stroke-dasharray="4 3" marker-end="url(#arrow-yellow)">
+    <animate attributeName="stroke-dashoffset" from="0" to="-14"
+             dur="1.5s" repeatCount="indefinite"/>
+  </path>
+
+  <!-- Strands → Inner agent (rewrite) -->
+  <path d="M 400 190 L 340 190" stroke="#fd79a8" stroke-width="2"
+        marker-end="url(#arrow-pink)">
+    <animate attributeName="stroke-dashoffset" from="0" to="-14"
+             dur="1.5s" repeatCount="indefinite"/>
+  </path>
+
+  <!-- Arrow markers -->
+  <defs>
+    <marker id="arrow-yellow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#fdcb6e"/>
+    </marker>
+    <marker id="arrow-pink" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#fd79a8"/>
+    </marker>
+  </defs>
+</svg>
+</div>
+
+
+
+<!-- HOW IT WORKS -->
+<h2>How It Works</h2>
+
+<p>The system has two loops, just like AIDE&sup2;:</p>
+
+<ol>
+    <li><strong>Inner agent</strong> — pure Python code that makes FPL decisions each gameweek:
+        transfers, captain, lineup, chips.</li>
+    <li><strong>Outer loop</strong> — a Strands Agent that rewrites the inner agent's code,
+        evaluates it via backtest, and keeps improvements.</li>
+</ol>
+
+<h3>The Strands Agent Difference</h3>
+
+<p>
+    Unlike a single-shot prompt ("here's the code, improve it"), our outer loop uses
+    <a href="https://strandsagents.com">Strands Agents SDK</a> to create a
+    <strong>multi-step reasoning agent</strong> with tools. Each iteration, the agent:
+</p>
+
+<!-- AGENT WORKFLOW SVG -->
+<div class="svg-container">
+<svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="320" fill="#0a0a0f" rx="12"/>
+
+  <!-- Step nodes -->
+  <!-- Step 1: Read -->
+  <circle cx="80" cy="160" r="32" fill="#12121a" stroke="#00cec9" stroke-width="2">
+    <animate attributeName="stroke-opacity" values="0.4;1;0.4" dur="4s" begin="0s" repeatCount="indefinite"/>
+  </circle>
+  <text x="80" y="155" text-anchor="middle" fill="#00cec9" font-size="20">&#128269;</text>
+  <text x="80" y="175" text-anchor="middle" fill="#e0e0e8" font-size="9">READ</text>
+  <text x="80" y="210" text-anchor="middle" fill="#8888a0" font-size="9">Inspect code</text>
+  <text x="80" y="223" text-anchor="middle" fill="#8888a0" font-size="9">&amp; results</text>
+
+  <!-- Step 2: Analyze -->
+  <circle cx="210" cy="160" r="32" fill="#12121a" stroke="#6c5ce7" stroke-width="2">
+    <animate attributeName="stroke-opacity" values="0.4;1;0.4" dur="4s" begin="0.7s" repeatCount="indefinite"/>
+  </circle>
+  <text x="210" y="155" text-anchor="middle" fill="#6c5ce7" font-size="20">&#129504;</text>
+  <text x="210" y="175" text-anchor="middle" fill="#e0e0e8" font-size="9">ANALYZE</text>
+  <text x="210" y="210" text-anchor="middle" fill="#8888a0" font-size="9">Find weakness</text>
+  <text x="210" y="223" text-anchor="middle" fill="#8888a0" font-size="9">&amp; check history</text>
+
+  <!-- Step 3: Draft -->
+  <circle cx="340" cy="160" r="32" fill="#12121a" stroke="#fd79a8" stroke-width="2">
+    <animate attributeName="stroke-opacity" values="0.4;1;0.4" dur="4s" begin="1.4s" repeatCount="indefinite"/>
+  </circle>
+  <text x="340" y="155" text-anchor="middle" fill="#fd79a8" font-size="20">&#9998;</text>
+  <text x="340" y="175" text-anchor="middle" fill="#e0e0e8" font-size="9">DRAFT</text>
+  <text x="340" y="210" text-anchor="middle" fill="#8888a0" font-size="9">Write improved</text>
+  <text x="340" y="223" text-anchor="middle" fill="#8888a0" font-size="9">strategy code</text>
+
+  <!-- Step 4: Validate -->
+  <circle cx="470" cy="160" r="32" fill="#12121a" stroke="#fdcb6e" stroke-width="2">
+    <animate attributeName="stroke-opacity" values="0.4;1;0.4" dur="4s" begin="2.1s" repeatCount="indefinite"/>
+  </circle>
+  <text x="470" y="155" text-anchor="middle" fill="#fdcb6e" font-size="20">&#9989;</text>
+  <text x="470" y="175" text-anchor="middle" fill="#e0e0e8" font-size="9">VALIDATE</text>
+  <text x="470" y="210" text-anchor="middle" fill="#8888a0" font-size="9">Syntax check</text>
+  <text x="470" y="223" text-anchor="middle" fill="#8888a0" font-size="9">&amp; self-correct</text>
+
+  <!-- Step 5: Submit -->
+  <circle cx="600" cy="160" r="32" fill="#12121a" stroke="#00b894" stroke-width="2">
+    <animate attributeName="stroke-opacity" values="0.4;1;0.4" dur="4s" begin="2.8s" repeatCount="indefinite"/>
+  </circle>
+  <text x="600" y="155" text-anchor="middle" fill="#00b894" font-size="20">&#128640;</text>
+  <text x="600" y="175" text-anchor="middle" fill="#e0e0e8" font-size="9">SUBMIT</text>
+  <text x="600" y="210" text-anchor="middle" fill="#8888a0" font-size="9">Pass to eval</text>
+  <text x="600" y="223" text-anchor="middle" fill="#8888a0" font-size="9">harness</text>
+
+  <!-- Connecting arrows -->
+  <line x1="112" y1="160" x2="178" y2="160" stroke="#8888a0" stroke-width="1.5"
+        marker-end="url(#arrow-muted)"/>
+  <line x1="242" y1="160" x2="308" y2="160" stroke="#8888a0" stroke-width="1.5"
+        marker-end="url(#arrow-muted)"/>
+  <line x1="372" y1="160" x2="438" y2="160" stroke="#8888a0" stroke-width="1.5"
+        marker-end="url(#arrow-muted)"/>
+  <line x1="502" y1="160" x2="568" y2="160" stroke="#8888a0" stroke-width="1.5"
+        marker-end="url(#arrow-muted)"/>
+
+  <!-- Retry arrow (validate → draft) -->
+  <path d="M 470 192 C 470 260, 340 260, 340 192" fill="none"
+        stroke="#fdcb6e" stroke-width="1" stroke-dasharray="4 3"
+        marker-end="url(#arrow-yellow-small)">
+    <animate attributeName="stroke-dashoffset" from="0" to="-14"
+             dur="2s" repeatCount="indefinite"/>
+  </path>
+  <text x="405" y="270" text-anchor="middle" fill="#fdcb6e" font-size="9">retry if invalid</text>
+
+  <!-- Traveling dot along the path -->
+  <circle r="4" fill="#00cec9">
+    <animate attributeName="cx" values="80;210;340;470;600;600" dur="4s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="160;160;160;160;160;160" dur="4s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="1;1;1;1;1;0" dur="4s" repeatCount="indefinite"/>
+  </circle>
+
+  <defs>
+    <marker id="arrow-muted" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#8888a0"/>
+    </marker>
+    <marker id="arrow-yellow-small" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
+      <polygon points="0 0, 6 2.5, 0 5" fill="#fdcb6e"/>
+    </marker>
+  </defs>
+</svg>
+</div>
+
+<p>This multi-step approach means the agent catches its own syntax errors, avoids repeating
+failed strategies, and produces higher-quality proposals — boosting the acceptance rate
+from the typical ~10% (in AIDE&sup2;) toward 20-30%.</p>
+
+
+
+<!-- SELECTION MECHANISM -->
+<h2>The Selection Signal: Private Gameweeks</h2>
+
+<p>
+    The key anti-overfitting mechanism (borrowed from AIDE&sup2;) is the
+    <strong>public/private gameweek split</strong>. The inner agent is evaluated on all gameweeks,
+    but only the score on <em>private</em> (held-out) gameweeks determines whether a rewrite is kept.
+</p>
+
+<!-- PUBLIC/PRIVATE SPLIT SVG -->
+<div class="svg-container">
+<svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="200" fill="#0a0a0f" rx="12"/>
+
+  <text x="40" y="30" fill="#e0e0e8" font-size="13" font-weight="600"
+        font-family="sans-serif">Season Gameweeks (38 total)</text>
+
+  <!-- Gameweek blocks -->
+  <!-- Public (GW 5-27 ≈ 60%) -->
+  <rect x="40" y="50" width="380" height="50" rx="6" fill="#6c5ce720" stroke="#6c5ce7" stroke-width="1.5">
+    <animate attributeName="fill-opacity" values="0.1;0.25;0.1" dur="3s" repeatCount="indefinite"/>
+  </rect>
+  <text x="230" y="80" text-anchor="middle" fill="#6c5ce7" font-size="12" font-weight="600">
+    PUBLIC (60%) — visible to proposer as feedback
+  </text>
+
+  <!-- Private (GW 28-38 ≈ 40%) -->
+  <rect x="430" y="50" width="250" height="50" rx="6" fill="#00b89420" stroke="#00b894" stroke-width="1.5">
+    <animate attributeName="fill-opacity" values="0.1;0.3;0.1" dur="3s" begin="1.5s" repeatCount="indefinite"/>
+  </rect>
+  <text x="555" y="80" text-anchor="middle" fill="#00b894" font-size="12" font-weight="600">
+    PRIVATE (40%) — selection signal
+  </text>
+
+  <!-- Explanation -->
+  <text x="40" y="135" fill="#8888a0" font-size="11" font-family="sans-serif">
+    Agent sees public scores → proposes strategy changes
+  </text>
+  <text x="40" y="155" fill="#8888a0" font-size="11" font-family="sans-serif">
+    But ONLY private score improvement → keeps the change
+  </text>
+  <text x="40" y="180" fill="#fdcb6e" font-size="11" font-family="sans-serif">
+    ⚡ This prevents overfitting to specific gameweeks
+  </text>
+</svg>
+</div>
+
+
+
+<!-- WHAT IT DISCOVERS -->
+<h2>What It Could Discover</h2>
+
+<p>The system is designed to discover improvements across all FPL decision dimensions:</p>
+
+<table>
+    <tr>
+        <th>Decision</th>
+        <th>Baseline (Hand-coded)</th>
+        <th>Potential Discovery</th>
+    </tr>
+    <tr>
+        <td>Captain pick</td>
+        <td>Highest form × fixture score</td>
+        <td>xG-weighted, home-field adjusted, ceiling-biased</td>
+    </tr>
+    <tr>
+        <td>Transfers</td>
+        <td>Replace worst form player</td>
+        <td>Form decay detection, fixture runs, value hunting</td>
+    </tr>
+    <tr>
+        <td>Lineup</td>
+        <td>Best expected points</td>
+        <td>Matchup-specific, minutes filter, consistency weighting</td>
+    </tr>
+    <tr>
+        <td>Chips</td>
+        <td>Conservative (late-season)</td>
+        <td>DGW detection, bench strength triggers, rank-based timing</td>
+    </tr>
+    <tr>
+        <td>Hits (-4 pts)</td>
+        <td>Max 2, gain threshold 3.0</td>
+        <td>Fixture-swing aware, multi-week payoff estimation</td>
+    </tr>
+</table>
+
+<h2>Why Strands + Bedrock</h2>
+
+<p>We chose <strong>Strands Agents SDK</strong> with <strong>Amazon Bedrock</strong> for the outer loop because:</p>
+
+<ul>
+    <li><strong>Multi-step reasoning</strong> — the agent doesn't just generate code, it
+        reads → analyzes → drafts → validates → submits. Each step uses a tool call.</li>
+    <li><strong>Self-correction</strong> — if <code>validate_code()</code> fails, the agent
+        fixes the issues and retries before submitting, saving expensive backtest cycles.</li>
+    <li><strong>No API key management</strong> — Bedrock uses your existing AWS credentials.
+        No separate billing accounts to set up.</li>
+    <li><strong>Model flexibility</strong> — switch between Claude Sonnet (balanced),
+        Opus (most capable), Nova Pro (AWS-native), or Llama 4 with a single flag.</li>
+    <li><strong>Tool-native</strong> — Strands' <code>@tool</code> decorator makes the agent's
+        capabilities explicit and inspectable, not buried in prompts.</li>
+</ul>
+
+<pre><code># The outer loop in 4 lines
+from strands import Agent, tool
+from strands.models import BedrockModel
+
+agent = Agent(
+    model=BedrockModel(model_id="us.anthropic.claude-sonnet-4-20250514-v1:0"),
+    tools=[read_strategy, read_results, validate_code, write_candidate],
+    system_prompt=OPTIMIZER_PROMPT,
+)
+agent("Improve the FPL strategy.")</code></pre>
+
+
+
+<!-- RSI LADDER -->
+<h2>The RSI Ladder for FPL</h2>
+
+<p>Following AIDE&sup2;'s framework, we define an FPL-specific RSI ladder:</p>
+
+<!-- RSI LADDER SVG -->
+<div class="svg-container">
+<svg viewBox="0 0 720 360" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="360" fill="#0a0a0f" rx="12"/>
+
+  <!-- Level 0 -->
+  <rect x="60" y="280" width="600" height="55" rx="8" fill="#12121a" stroke="#8888a0" stroke-width="1.5"/>
+  <text x="80" y="305" fill="#8888a0" font-size="12" font-weight="600" font-family="monospace">Level 0 · Delegation</text>
+  <text x="80" y="323" fill="#8888a0" font-size="10" font-family="sans-serif">System runs autonomously but improves slower than manual FPL tuning</text>
+
+  <!-- Level 1 (highlighted) -->
+  <rect x="60" y="210" width="600" height="55" rx="8" fill="#00b89415" stroke="#00b894" stroke-width="2">
+    <animate attributeName="stroke-opacity" values="0.5;1;0.5" dur="2s" repeatCount="indefinite"/>
+  </rect>
+  <text x="80" y="235" fill="#00b894" font-size="12" font-weight="600" font-family="monospace">Level 1 · Net Positive ← TARGET</text>
+  <text x="80" y="253" fill="#00b894" font-size="10" font-family="sans-serif">Beats hand-tuned strategy on held-out seasons. Generalizes across metas.</text>
+
+  <!-- Level 2 -->
+  <rect x="60" y="140" width="600" height="55" rx="8" fill="#12121a" stroke="#6c5ce7" stroke-width="1.5"/>
+  <text x="80" y="165" fill="#6c5ce7" font-size="12" font-weight="600" font-family="monospace">Level 2 · Ignition</text>
+  <text x="80" y="183" fill="#8888a0" font-size="10" font-family="sans-serif">Discovered agent becomes a better outer-loop optimizer than its predecessor</text>
+
+  <!-- Level 3 -->
+  <rect x="60" y="70" width="600" height="55" rx="8" fill="#12121a" stroke="#fd79a8" stroke-width="1.5"/>
+  <text x="80" y="95" fill="#fd79a8" font-size="12" font-weight="600" font-family="monospace">Level 3 · Inflection</text>
+  <text x="80" y="113" fill="#8888a0" font-size="10" font-family="sans-serif">Progress accelerates at fixed budget — FPL intelligence explosion</text>
+
+  <!-- Arrow indicating progress -->
+  <text x="35" y="180" fill="#00b894" font-size="16" text-anchor="middle">▲</text>
+  <text x="35" y="250" fill="#00b894" font-size="16" text-anchor="middle">●</text>
+  <line x1="35" y1="190" x2="35" y2="240" stroke="#00b894" stroke-width="2"/>
+</svg>
+</div>
+
+
+
+<!-- GETTING STARTED -->
+<h2>Run It Yourself</h2>
+
+<pre><code># Clone and install
+git clone https://github.com/your-org/fpl-rso.git
+cd fpl-rso
+pip install -r requirements.txt
+
+# Fetch historical FPL data (free, from GitHub)
+python scripts/run.py --fetch-data
+
+# Evaluate the baseline agent
+python scripts/run.py --eval-only
+
+# Run the RSI loop (50 iterations with Claude Sonnet)
+python scripts/run.py --model claude-sonnet --region us-east-1
+
+# Or use a cheaper model for more iterations
+python scripts/run.py --model nova-lite --iterations 100</code></pre>
+
+<div class="callout success">
+    <strong>Prerequisites:</strong> AWS credentials configured with Bedrock model access enabled.
+    No separate API keys needed — uses your existing AWS auth.
+</div>
+
+<!-- COMPARISON TABLE -->
+<h2>FPL-RSO vs AIDE&sup2;</h2>
+
+<table>
+    <tr>
+        <th>Dimension</th>
+        <th>AIDE&sup2;</th>
+        <th>FPL-RSO</th>
+    </tr>
+    <tr>
+        <td>Domain</td>
+        <td>ML research agents</td>
+        <td>FPL decision-making</td>
+    </tr>
+    <tr>
+        <td>Inner loop</td>
+        <td>AIDE (ML engineering agent)</td>
+        <td>strategy.py (pure Python)</td>
+    </tr>
+    <tr>
+        <td>Outer loop</td>
+        <td>AIDEhuman (Claude Opus)</td>
+        <td>Strands Agent (Bedrock)</td>
+    </tr>
+    <tr>
+        <td>Selection signal</td>
+        <td>Private eval score</td>
+        <td>Private gameweek score</td>
+    </tr>
+    <tr>
+        <td>Anti-overfitting</td>
+        <td>Public/private split</td>
+        <td>Public/private GW split</td>
+    </tr>
+    <tr>
+        <td>Task heterogeneity</td>
+        <td>ML + heuristic + harness tasks</td>
+        <td>Multiple seasons (different metas)</td>
+    </tr>
+    <tr>
+        <td>Cost constraint</td>
+        <td>Fixed $ per evaluation</td>
+        <td>Fixed seasons + token budget</td>
+    </tr>
+    <tr>
+        <td>Agent toolkit</td>
+        <td>Single-shot prompting</td>
+        <td>Multi-step Strands tools</td>
+    </tr>
+</table>
+
+<!-- CONCLUSION -->
+<h2>Production Deployment: Bedrock AgentCore Runtime</h2>
+
+<p>
+    The Strands proposer agent can be deployed serverlessly to
+    <a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html">Amazon Bedrock AgentCore Runtime</a>
+    — a secure, serverless runtime purpose-built for AI agents.
+    This separates the heavy LLM reasoning from the local backtest loop.
+</p>
+
+<!-- AGENTCORE ARCHITECTURE SVG -->
+<div class="svg-container">
+<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="280" fill="#0a0a0f" rx="12"/>
+
+  <!-- Local box -->
+  <rect x="30" y="40" width="280" height="200" rx="12" fill="#12121a" stroke="#00cec9" stroke-width="2"/>
+  <text x="50" y="70" fill="#00cec9" font-size="13" font-weight="600" font-family="monospace">LOCAL</text>
+  <text x="50" y="95" fill="#8888a0" font-size="11" font-family="monospace">scripts/run.py</text>
+  <text x="50" y="120" fill="#8888a0" font-size="11" font-family="sans-serif">• Load historical data</text>
+  <text x="50" y="140" fill="#8888a0" font-size="11" font-family="sans-serif">• Run backtest evaluation</text>
+  <text x="50" y="160" fill="#8888a0" font-size="11" font-family="sans-serif">• Selection (keep/reject)</text>
+  <text x="50" y="180" fill="#8888a0" font-size="11" font-family="sans-serif">• State management</text>
+  <text x="50" y="210" fill="#fdcb6e" font-size="10" font-family="sans-serif">Fast, data-heavy, cheap</text>
+
+  <!-- AgentCore box -->
+  <rect x="410" y="40" width="280" height="200" rx="12" fill="#12121a" stroke="#6c5ce7" stroke-width="2">
+    <animate attributeName="stroke-opacity" values="0.5;1;0.5" dur="3s" repeatCount="indefinite"/>
+  </rect>
+  <text x="430" y="70" fill="#6c5ce7" font-size="13" font-weight="600" font-family="monospace">AGENTCORE RUNTIME</text>
+  <text x="430" y="95" fill="#8888a0" font-size="11" font-family="monospace">deploy/app.py</text>
+  <text x="430" y="120" fill="#8888a0" font-size="11" font-family="sans-serif">• Strands Agent reasoning</text>
+  <text x="430" y="140" fill="#8888a0" font-size="11" font-family="sans-serif">• Tool calls (6 tools)</text>
+  <text x="430" y="160" fill="#8888a0" font-size="11" font-family="sans-serif">• Code validation + retry</text>
+  <text x="430" y="180" fill="#8888a0" font-size="11" font-family="sans-serif">• Candidate generation</text>
+  <text x="430" y="210" fill="#fdcb6e" font-size="10" font-family="sans-serif">Serverless, isolated, pay-per-use</text>
+
+  <!-- Arrow: Local → AgentCore -->
+  <path d="M 310 120 L 410 120" stroke="#e0e0e8" stroke-width="2"
+        marker-end="url(#arrow-white)">
+  </path>
+  <text x="335" y="110" fill="#8888a0" font-size="9" font-family="monospace">invoke</text>
+
+  <!-- Arrow: AgentCore → Local -->
+  <path d="M 410 160 L 310 160" stroke="#00b894" stroke-width="2"
+        marker-end="url(#arrow-green)">
+  </path>
+  <text x="330" y="175" fill="#8888a0" font-size="9" font-family="monospace">candidate</text>
+
+  <!-- Pulse on arrows -->
+  <circle r="4" fill="#e0e0e8">
+    <animate attributeName="cx" values="310;410" dur="1.5s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="120;120" dur="1.5s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="1;0" dur="1.5s" repeatCount="indefinite"/>
+  </circle>
+  <circle r="4" fill="#00b894">
+    <animate attributeName="cx" values="410;310" dur="1.5s" begin="0.8s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="160;160" dur="1.5s" begin="0.8s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="1;0" dur="1.5s" begin="0.8s" repeatCount="indefinite"/>
+  </circle>
+
+  <defs>
+    <marker id="arrow-white" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#e0e0e8"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#00b894"/>
+    </marker>
+  </defs>
+</svg>
+</div>
+
+<h3>Why AgentCore?</h3>
+
+<ul>
+    <li><strong>Serverless</strong> — scales to zero between iterations, scales up in seconds when needed</li>
+    <li><strong>Session isolation</strong> — each iteration runs in its own microVM, preventing state leaks</li>
+    <li><strong>Pay-per-use</strong> — only charged for actual agent execution time</li>
+    <li><strong>Built-in auth</strong> — integrates with Cognito, Okta, or IAM</li>
+    <li><strong>Observability</strong> — CloudWatch metrics, traces, and spans out of the box</li>
+</ul>
+
+<h3>Deploy in 3 commands</h3>
+
+<pre><code># Install AgentCore CLI
+npm install -g @aws/agentcore
+
+# Deploy the proposer agent
+agentcore deploy
+
+# Run the loop against your deployed agent
+python scripts/run.py --agentcore-arn arn:aws:bedrock:us-east-1:123456:agent-runtime/fpl-rso-proposer</code></pre>
+
+<div class="callout">
+    <strong>Local vs Remote:</strong> Without <code>--agentcore-arn</code>, the proposer runs locally
+    using your machine's Bedrock credentials. With it, the heavy LLM reasoning moves to AgentCore
+    while backtesting stays local (fast, needs data access).
+</div>
+
+<h2>What's Next</h2>
+
+<p>This is the worst version of itself it will ever be. Future directions:</p>
+
+<ul>
+    <li><strong>Live deployment</strong> — connect to the FPL API for real-time decisions</li>
+    <li><strong>Multi-season generalization testing</strong> — does an agent trained on
+        2020-2024 seasons beat humans on 2025-26?</li>
+    <li><strong>Ignition test</strong> — install the best discovered agent as the
+        outer-loop optimizer and check for Level 2 RSI</li>
+    <li><strong>Community league</strong> — pit RSI agents against each other in a
+        mini-league to measure relative improvement</li>
+    <li><strong>Expanded tools</strong> — give the Strands Agent access to partial backtesting
+        mid-reasoning, so it can test hypotheses before committing</li>
+</ul>
+
+<div class="callout warn">
+    <strong>Disclaimer:</strong> This is a research project exploring recursive self-improvement
+    in a constrained, safe domain. FPL has no real-world consequences beyond bragging rights.
+    That's what makes it an ideal RSI testbed.
+</div>
+
+<p style="margin-top: 48px; color: var(--muted); font-size: 0.9rem;">
+    Built with <a href="https://strandsagents.com">Strands Agents SDK</a> ·
+    Powered by <a href="https://aws.amazon.com/bedrock/">Amazon Bedrock</a> ·
+    Inspired by <a href="https://www.weco.ai/blog/first-evidence-of-recursive-self-improvement">AIDE&sup2; (Weco AI)</a>
+</p>
+
+</div><!-- .container -->
+</body>
+</html>
