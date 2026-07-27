@@ -12,7 +12,7 @@ outer_loop:
   # AgentCore Runtime (optional — run proposer as a serverless service)
   # Set this to your deployed AgentCore ARN to invoke remotely instead of locally.
   # Deploy with: agentcore deploy (see deploy/README.md)
-  agentcore_arn: null         # e.g. "arn:aws:bedrock:us-east-1:123456789012:agent-runtime/fpl-rso-proposer"
+  agentcore_arn: "arn:aws:bedrock-agentcore:us-east-1:514965996716:runtime/fplrso_loop-YvEJ6s29Vd"
 
   # The outer loop uses a Strands Agent with tools:
   #   - read_current_strategy: reads the inner agent's code

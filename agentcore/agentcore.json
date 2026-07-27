@@ -1,0 +1,35 @@
+{
+  "name": "fplrso",
+  "version": 1,
+  "managedBy": "CDK",
+  "tags": {
+    "agentcore:created-by": "agentcore-cli",
+    "agentcore:project-name": "fplrso"
+  },
+  "runtimes": [
+    {
+      "name": "fplrso_loop",
+      "build": "Container",
+      "entrypoint": "deploy/full_loop.py",
+      "codeLocation": ".",
+      "containerConfig": {
+        "dockerfile": "deploy/Dockerfile"
+      },
+      "networkMode": "PUBLIC",
+      "idleTimeout": 3600,
+      "maxLifetime": 28800
+    }
+  ],
+  "memories": [],
+  "knowledgeBases": [],
+  "credentials": [],
+  "evaluators": [],
+  "onlineEvalConfigs": [],
+  "agentCoreGateways": [],
+  "policyEngines": [],
+  "configBundles": [],
+  "abTests": [],
+  "harnesses": [],
+  "datasets": [],
+  "payments": []
+}

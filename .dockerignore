@@ -1,0 +1,25 @@
+# CDK artifacts
+agentcore/
+cdk.out/
+
+# Git
+.git/
+
+# Data (fetched at runtime inside container)
+data/raw/
+
+# Outer loop runs (generated)
+outer_loop/runs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# OS
+.DS_Store
+
+# Node
+node_modules/

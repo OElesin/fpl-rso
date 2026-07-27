@@ -83,15 +83,25 @@ def run_remote(args):
     print("Invoking AgentCore Runtime... (this may take a while)")
     print(f"  Estimated time: ~{payload['iterations'] * 2} minutes for {payload['iterations']} iterations\n")
 
-    # Create client
+    # Create client with extended timeout (loop can run for many minutes)
     session_kwargs = {}
     if profile:
         session_kwargs["profile_name"] = profile
     session = boto3.Session(**session_kwargs)
-    client = session.client("bedrock-agentcore", region_name=region)
+
+    from botocore.config import Config
+    client = session.client(
+        "bedrock-agentcore",
+        region_name=region,
+        config=Config(
+            read_timeout=900,  # 15 minutes
+            connect_timeout=30,
+            retries={"max_attempts": 0},
+        ),
+    )
 
     # Invoke
-    session_id = f"fpl-rso-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    session_id = f"fpl-rso-run-{datetime.now().strftime('%Y%m%d-%H%M%S')}-0000000000"
 
     try:
         response = client.invoke_agent_runtime(
@@ -100,7 +110,22 @@ def run_remote(args):
             payload=json.dumps(payload).encode(),
         )
 
-        result = json.loads(response["payload"].read())
+        # AgentCore returns response in 'response' field (StreamingBody)
+        if "response" in response:
+            body = response["response"]
+            if hasattr(body, "read"):
+                raw = body.read()
+            else:
+                raw = body
+            if isinstance(raw, bytes):
+                raw = raw.decode("utf-8")
+            result = json.loads(raw) if raw.strip() else {"status": "error", "message": "Empty response body"}
+        elif "payload" in response:
+            result = json.loads(response["payload"].read())
+        else:
+            result = {"status": "error", "message": f"Unexpected response keys: {list(response.keys())}"}
+
+        print(f"  HTTP Status: {response.get('statusCode', 'N/A')}")
 
     except Exception as e:
         print(f"ERROR: AgentCore invocation failed: {e}")
