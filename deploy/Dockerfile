@@ -13,5 +13,6 @@ COPY . .
 # AgentCore expects the app to serve on port 8080
 EXPOSE 8080
 
-# Entry point
-CMD ["python", "deploy/app.py"]
+# Default: full loop (runs all iterations inside the container)
+# Override with deploy/app.py for proposer-only mode
+CMD ["python", "deploy/full_loop.py"]
