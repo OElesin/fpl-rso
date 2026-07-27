@@ -26,7 +26,16 @@ Or via boto3:
 
 import sys
 import json
+import logging
 from pathlib import Path
+
+# Configure logging for CloudWatch visibility
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+logger = logging.getLogger("fpl-rso")
 
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -83,11 +92,11 @@ def invoke(payload: dict) -> dict:
 
     try:
         # Step 1: Fetch data (downloads from GitHub into container)
-        print(f"[FPL-RSO] Fetching data for seasons: {seasons}")
+        logger.info(f" Fetching data for seasons: {seasons}")
         fetch_all(seasons)
 
         # Step 2: Load season data
-        print(f"[FPL-RSO] Loading season data...")
+        logger.info(f" Loading season data...")
         seasons_data = load_seasons(seasons)
         if not seasons_data:
             return {
@@ -103,7 +112,7 @@ def invoke(payload: dict) -> dict:
             current_code = strategy_path.read_text()
 
         # Step 4: Evaluate baseline
-        print(f"[FPL-RSO] Evaluating baseline...")
+        logger.info(f" Evaluating baseline...")
         bt_config = BacktestConfig(
             seasons=seasons,
             public_gw_ratio=public_gw_ratio,
@@ -112,7 +121,7 @@ def invoke(payload: dict) -> dict:
         baseline_result = evaluate_agent(bt_config, seasons_data)
         baseline_score = baseline_result.private_score
 
-        print(f"[FPL-RSO] Baseline: public={baseline_result.public_score:.2f}, "
+        logger.info(f" Baseline: public={baseline_result.public_score:.2f}, "
               f"private={baseline_score:.2f}")
 
         # Step 5: Run the loop
@@ -130,7 +139,7 @@ def invoke(payload: dict) -> dict:
         }]
 
         for i in range(1, iterations + 1):
-            print(f"[FPL-RSO] Step {i}/{iterations}...")
+            logger.info(f" Step {i}/{iterations}...")
 
             # Propose
             eval_dict = {
@@ -190,7 +199,7 @@ def invoke(payload: dict) -> dict:
             improvement = candidate_result.private_score - best_score
 
             if improvement >= threshold:
-                print(f"[FPL-RSO] Step {i}: KEPT (+{improvement:.2f})")
+                logger.info(f" Step {i}: KEPT (+{improvement:.2f})")
                 best_code = candidate_code
                 best_score = candidate_result.private_score
                 best_iteration = i
@@ -220,7 +229,7 @@ def invoke(payload: dict) -> dict:
         total_improvement = best_score - baseline_score
         acceptance_rate = len(improvements) / iterations if iterations > 0 else 0
 
-        print(f"[FPL-RSO] Complete. {len(improvements)} improvements found. "
+        logger.info(f" Complete. {len(improvements)} improvements found. "
               f"Best: {best_score:.2f} (+{total_improvement:.2f})")
 
         return {
