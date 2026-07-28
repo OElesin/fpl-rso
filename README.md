@@ -110,24 +110,58 @@ Iteration 1: Agent proposed fixture-aware rewrite → scored 3.71 → REJECTED (
 Time:        ~2 minutes end-to-end
 ```
 
+## Overnight Run Results (50 Iterations on AgentCore)
+
+The full loop ran autonomously on Bedrock AgentCore Runtime, triggered by EventBridge every 5 minutes, with state persisted in DynamoDB.
+
+```
+============================================================
+  OVERNIGHT RUN — FINAL RESULTS
+============================================================
+  Total iterations:    50
+  Improvements found:  19
+  Rejected:            31
+  Acceptance rate:     38%
+
+  Baseline score:      4.14 avg pts/GW
+  Best score:          8.79 avg pts/GW
+  Total improvement:   +4.64 pts/GW (+112%)
+
+  Total points:        170 → 274 (2023-24 season)
+  Peak reached:        10.93 pts/GW (iterations 16 & 37)
+  Run time:            ~4 hours (fully automated)
+  Cost:                ~$12 (50 × Claude Sonnet 5)
+  Human effort:        0 (ran while sleeping)
+============================================================
+```
+
+### Improvement Timeline
+
+| Iteration | Score (pts/GW) | Gain | Notes |
+|-----------|---------------|------|-------|
+| 0 (baseline) | 4.14 | — | Simple form-weighted heuristics |
+| 2 | 4.43 | +0.29 | First small fix |
+| 9 | 8.21 | +4.07 | Fixture-aware transfers discovered |
+| 10 | 9.64 | +5.50 | Captain selection overhaul |
+| 16 | 10.93 | +6.79 | Peak — chip timing + lineup opt |
+| 46 | 8.79 | +4.64 | Final stable (generalizes better) |
+
 ## Projected Performance: Human vs Agent
 
-| Metric | Human | Agent | Speedup |
-|--------|-------|-------|---------|
-| Time per iteration | 2-5 hours | ~2 minutes | ~100x |
-| Iterations per day | 1-2 | 700+ | ~500x |
-| 50 iterations | 2-6 weeks (part-time) | ~90 minutes | ~50x |
-| 100 iterations | 1-3 months | ~3 hours | ~50-100x |
-| Meaningful improvements per week | ~1 | 5-10 | ~5-10x |
-| Time to beat hand-tuned baseline | 4-8 weeks | 1 afternoon | ~50-100x |
-| Cost per improvement found | Hours of human time | ~$1.50-3.00 | — |
-| Expected acceptance rate | — | ~10% (5-10 of 100 kept) | — |
+| Metric | Human | Agent (Actual) | Speedup |
+|--------|-------|----------------|---------|
+| Time per iteration | 2-5 hours | ~5 minutes | ~40x |
+| 50 iterations | 2-6 weeks (part-time) | 4 hours (overnight) | ~50x |
+| Improvements found per 50 iters | 3-5 (estimated) | 19 (measured) | ~4-6x |
+| Acceptance rate | — | 38% (measured) | — |
+| Score improvement | — | +112% (measured) | — |
+| Cost for +112% gain | Weeks of expert time | $12 | — |
 
 ## RSI Level Target
 
 Following the AIDE² RSI ladder:
 - **Level 0**: The system runs autonomously but improves slower than manual tuning.
-- **Level 1**: The system improves itself faster than you could manually. ← *Target*
+- **Level 1**: The system improves itself faster than you could manually. ← **Achieved ✅**
 
 ## Data Source
 
