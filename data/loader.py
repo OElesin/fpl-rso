@@ -119,8 +119,9 @@ def load_season(season: str) -> SeasonData:
 
     # Normalize price to millions (from tenths)
     if "price" in df.columns:
-        # If max price > 200, it's probably in tenths already
-        if df["price"].max() > 200:
+        # FPL API stores prices as integers in tenths (55 = £5.5m, 141 = £14.1m)
+        # If max price > 20, it's in tenths and needs dividing
+        if df["price"].max() > 20:
             df["price"] = df["price"] / 10.0
 
     # Ensure player_id exists

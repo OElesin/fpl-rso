@@ -76,7 +76,8 @@ def split_gameweeks(
 def initialize_squad(season_data: SeasonData, start_gw: int) -> tuple[list[int], float]:
     """
     Create a starting squad using the first few GWs of data.
-    Picks the best available players within budget constraints.
+    Uses value-based selection (form per million) to build a balanced squad
+    within the £100m budget, respecting position and team limits.
     """
     # Get form data heading into start_gw
     form = compute_rolling_form(season_data, start_gw)
@@ -93,10 +94,22 @@ def initialize_squad(season_data: SeasonData, start_gw: int) -> tuple[list[int],
         pool = pool.merge(form[["player_id", "form"]], on="player_id", how="left")
         pool["form"] = pool["form"].fillna(0)
 
-    # Greedy squad selection by position
+    # Filter out players with 0 form or missing price
+    pool = pool[pool["form"] > 0].copy()
+    pool = pool[pool["price"] > 0].copy()
+
+    # Calculate value score (form per million) for smart budget allocation
+    pool["value"] = pool["form"] / pool["price"]
+
+    # Two-pass selection: first pick high-value starters, then fill remaining
     squad = []
     budget = STARTING_BUDGET
     team_counts: dict = {}
+    position_counts: dict = {pos: 0 for pos in POSITION_LIMITS}
+
+    # Pass 1: Pick best value players for each position (starter-quality)
+    # Allocate roughly: GKP ~9m, DEF ~26m, MID ~40m, FWD ~25m
+    target_spend = {"GKP": 4.5, "DEF": 5.2, "MID": 8.0, "FWD": 8.3}
 
     for position, count in POSITION_LIMITS.items():
         candidates = pool[
@@ -106,7 +119,11 @@ def initialize_squad(season_data: SeasonData, start_gw: int) -> tuple[list[int],
         if candidates.empty:
             continue
 
-        candidates = candidates.sort_values("form", ascending=False)
+        # Sort by value (form/price) to get best bang for buck
+        candidates = candidates.sort_values("value", ascending=False)
+
+        # For each slot, pick best value player within price target
+        avg_price_target = target_spend.get(position, 6.0)
 
         selected = 0
         for _, player in candidates.iterrows():
@@ -115,19 +132,70 @@ def initialize_squad(season_data: SeasonData, start_gw: int) -> tuple[list[int],
 
             price = player.get("price", 5.0)
             team = player.get("team", "Unknown")
+            pid = int(player["player_id"])
 
-            # Budget check
-            if price > budget:
+            # Budget check — leave at least 4.0m per remaining slot
+            remaining_slots = sum(POSITION_LIMITS.values()) - len(squad) - 1
+            min_reserve = remaining_slots * 4.0
+            if price > (budget - min_reserve):
                 continue
 
             # Team limit check
             if team_counts.get(team, 0) >= MAX_PER_TEAM:
                 continue
 
-            squad.append(int(player["player_id"]))
+            # Don't overspend on bench players — last 1-2 per position should be cheap
+            if selected >= count - 1 and price > avg_price_target:
+                # Try to find a cheaper option
+                cheap = candidates[
+                    (candidates["price"] <= avg_price_target)
+                    & (~candidates["player_id"].isin(squad))
+                    & (candidates["player_id"] != pid)
+                ]
+                if not cheap.empty:
+                    player = cheap.iloc[0]
+                    price = player.get("price", 5.0)
+                    team = player.get("team", "Unknown")
+                    pid = int(player["player_id"])
+                    if team_counts.get(team, 0) >= MAX_PER_TEAM:
+                        continue
+
+            squad.append(pid)
             budget -= price
             team_counts[team] = team_counts.get(team, 0) + 1
+            position_counts[position] = position_counts.get(position, 0) + 1
             selected += 1
+
+    # Pass 2: If we didn't fill all slots, fill with cheapest available
+    total_needed = sum(POSITION_LIMITS.values())
+    if len(squad) < total_needed:
+        for position, count in POSITION_LIMITS.items():
+            filled = position_counts.get(position, 0)
+            if filled >= count:
+                continue
+
+            candidates = pool[
+                (pool["position"] == position)
+                & (~pool["player_id"].isin(squad))
+            ].copy()
+            candidates = candidates.sort_values("price", ascending=True)
+
+            for _, player in candidates.iterrows():
+                if filled >= count:
+                    break
+
+                price = player.get("price", 5.0)
+                team = player.get("team", "Unknown")
+
+                if price > budget:
+                    continue
+                if team_counts.get(team, 0) >= MAX_PER_TEAM:
+                    continue
+
+                squad.append(int(player["player_id"]))
+                budget -= price
+                team_counts[team] = team_counts.get(team, 0) + 1
+                filled += 1
 
     return squad, budget
 
