@@ -53,13 +53,27 @@ def decimal_default(obj):
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
+def convert_decimals(obj):
+    """Recursively convert Decimal to float in nested structures."""
+    if isinstance(obj, Decimal):
+        return float(obj)
+    elif isinstance(obj, dict):
+        return {k: convert_decimals(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_decimals(i) for i in obj]
+    return obj
+
+
 def get_state(run_id: str) -> dict | None:
     """Read current run state from DynamoDB."""
     dynamodb = boto3.resource("dynamodb", region_name=REGION)
     table = dynamodb.Table(TABLE_NAME)
 
     response = table.get_item(Key={"run_id": run_id})
-    return response.get("Item")
+    item = response.get("Item")
+    if item:
+        return convert_decimals(item)
+    return None
 
 
 def put_state(state: dict):
@@ -67,9 +81,10 @@ def put_state(state: dict):
     dynamodb = boto3.resource("dynamodb", region_name=REGION)
     table = dynamodb.Table(TABLE_NAME)
 
-    # Convert floats to Decimal for DynamoDB
     state["updated_at"] = datetime.utcnow().isoformat()
-    table.put_item(Item=json.loads(json.dumps(state), parse_float=Decimal))
+    # Convert to JSON string first (handles any non-serializable types), then parse with Decimal
+    state_json = json.dumps(state, default=decimal_default)
+    table.put_item(Item=json.loads(state_json, parse_float=Decimal))
 
 
 def invoke_agentcore(payload: dict) -> dict:
@@ -80,7 +95,7 @@ def invoke_agentcore(payload: dict) -> dict:
         config=Config(read_timeout=600, connect_timeout=30),
     )
 
-    session_id = f"fpl-rso-iter-{payload['iteration']:04d}-{datetime.utcnow().strftime('%H%M%S')}-pad000000"
+    session_id = f"fpl-rso-iter-{payload.get('iteration', payload.get('iterations', 0)):04d}-{datetime.utcnow().strftime('%H%M%S')}-pad000000"
 
     response = client.invoke_agent_runtime(
         agentRuntimeArn=AGENTCORE_ARN,
