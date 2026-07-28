@@ -1,55 +1,96 @@
-<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg">
-  <rect width="720" height="280" fill="#0a0a0f" rx="12"/>
+<svg viewBox="0 0 720 380" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="380" fill="#0a0a0f" rx="12"/>
 
-  <!-- Local box -->
-  <rect x="30" y="40" width="280" height="200" rx="12" fill="#12121a" stroke="#00cec9" stroke-width="2"/>
-  <text x="50" y="70" fill="#00cec9" font-size="13" font-weight="600" font-family="monospace">LOCAL</text>
-  <text x="50" y="95" fill="#8888a0" font-size="11" font-family="monospace">scripts/run.py</text>
-  <text x="50" y="120" fill="#8888a0" font-size="11" font-family="sans-serif">• Load historical data</text>
-  <text x="50" y="140" fill="#8888a0" font-size="11" font-family="sans-serif">• Run backtest evaluation</text>
-  <text x="50" y="160" fill="#8888a0" font-size="11" font-family="sans-serif">• Selection (keep/reject)</text>
-  <text x="50" y="180" fill="#8888a0" font-size="11" font-family="sans-serif">• State management</text>
-  <text x="50" y="210" fill="#fdcb6e" font-size="10" font-family="sans-serif">Fast, data-heavy, cheap</text>
+  <!-- EventBridge -->
+  <rect x="30" y="30" width="150" height="70" rx="10" fill="#12121a" stroke="#fd79a8" stroke-width="2"/>
+  <text x="55" y="60" fill="#fd79a8" font-size="11" font-weight="600" font-family="monospace">EventBridge</text>
+  <text x="55" y="80" fill="#8888a0" font-size="9" font-family="sans-serif">every 5 minutes</text>
 
-  <!-- AgentCore box -->
-  <rect x="410" y="40" width="280" height="200" rx="12" fill="#12121a" stroke="#6c5ce7" stroke-width="2">
+  <!-- Lambda -->
+  <rect x="30" y="140" width="150" height="90" rx="10" fill="#12121a" stroke="#fdcb6e" stroke-width="2"/>
+  <text x="55" y="167" fill="#fdcb6e" font-size="11" font-weight="600" font-family="monospace">Lambda</text>
+  <text x="55" y="185" fill="#8888a0" font-size="9" font-family="sans-serif">orchestrator.py</text>
+  <text x="55" y="200" fill="#8888a0" font-size="9" font-family="sans-serif">• Read state</text>
+  <text x="55" y="213" fill="#8888a0" font-size="9" font-family="sans-serif">• Invoke AgentCore</text>
+
+  <!-- Arrow: EventBridge → Lambda -->
+  <path d="M 105 100 L 105 140" stroke="#fd79a8" stroke-width="2" marker-end="url(#arr-pink)"/>
+
+  <!-- DynamoDB -->
+  <rect x="30" y="275" width="150" height="80" rx="10" fill="#12121a" stroke="#00b894" stroke-width="2">
     <animate attributeName="stroke-opacity" values="0.5;1;0.5" dur="3s" repeatCount="indefinite"/>
   </rect>
-  <text x="430" y="70" fill="#6c5ce7" font-size="13" font-weight="600" font-family="monospace">AGENTCORE RUNTIME</text>
-  <text x="430" y="95" fill="#8888a0" font-size="11" font-family="monospace">deploy/app.py</text>
-  <text x="430" y="120" fill="#8888a0" font-size="11" font-family="sans-serif">• Strands Agent reasoning</text>
-  <text x="430" y="140" fill="#8888a0" font-size="11" font-family="sans-serif">• Tool calls (6 tools)</text>
-  <text x="430" y="160" fill="#8888a0" font-size="11" font-family="sans-serif">• Code validation + retry</text>
-  <text x="430" y="180" fill="#8888a0" font-size="11" font-family="sans-serif">• Candidate generation</text>
-  <text x="430" y="210" fill="#fdcb6e" font-size="10" font-family="sans-serif">Serverless, isolated, pay-per-use</text>
+  <text x="55" y="303" fill="#00b894" font-size="11" font-weight="600" font-family="monospace">DynamoDB</text>
+  <text x="55" y="320" fill="#8888a0" font-size="9" font-family="sans-serif">• best_strategy</text>
+  <text x="55" y="333" fill="#8888a0" font-size="9" font-family="sans-serif">• score + history</text>
+  <text x="55" y="346" fill="#8888a0" font-size="9" font-family="sans-serif">• failed_attempts</text>
 
-  <!-- Arrow: Local → AgentCore -->
-  <path d="M 310 120 L 410 120" stroke="#e0e0e8" stroke-width="2"
-        marker-end="url(#arrow-white)"/>
-  <text x="335" y="110" fill="#8888a0" font-size="9" font-family="monospace">invoke</text>
+  <!-- Arrow: Lambda ↔ DynamoDB -->
+  <path d="M 85 230 L 85 275" stroke="#00b894" stroke-width="1.5" marker-end="url(#arr-green)"/>
+  <path d="M 125 275 L 125 230" stroke="#00b894" stroke-width="1.5" marker-end="url(#arr-green)"/>
+  <text x="130" y="258" fill="#8888a0" font-size="8" font-family="monospace">read/write state</text>
 
-  <!-- Arrow: AgentCore → Local -->
-  <path d="M 410 160 L 310 160" stroke="#00b894" stroke-width="2"
-        marker-end="url(#arrow-green)"/>
-  <text x="330" y="175" fill="#8888a0" font-size="9" font-family="monospace">candidate</text>
+  <!-- AgentCore Runtime box -->
+  <rect x="280" y="110" width="410" height="160" rx="12" fill="#12121a" stroke="#6c5ce7" stroke-width="2">
+    <animate attributeName="stroke-opacity" values="0.5;1;0.5" dur="3s" repeatCount="indefinite"/>
+  </rect>
+  <text x="305" y="140" fill="#6c5ce7" font-size="13" font-weight="600" font-family="monospace">Bedrock AgentCore Runtime</text>
+  <text x="305" y="165" fill="#8888a0" font-size="10" font-family="monospace">full_loop.py (1 iteration per invoke)</text>
 
-  <!-- Pulse on arrows -->
+  <!-- Tools inside AgentCore -->
+  <circle cx="310" cy="192" r="3" fill="#00cec9">
+    <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" begin="0s" repeatCount="indefinite"/>
+  </circle>
+  <text x="320" y="196" fill="#8888a0" font-size="9" font-family="monospace">Fetch data → Backtest → Strands Agent → Evaluate</text>
+
+  <circle cx="310" cy="212" r="3" fill="#00cec9">
+    <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" begin="0.5s" repeatCount="indefinite"/>
+  </circle>
+  <text x="320" y="216" fill="#8888a0" font-size="9" font-family="monospace">read_strategy → analyze → draft → validate → submit</text>
+
+  <circle cx="310" cy="232" r="3" fill="#00cec9">
+    <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" begin="1s" repeatCount="indefinite"/>
+  </circle>
+  <text x="320" y="236" fill="#8888a0" font-size="9" font-family="monospace">Return: {best_strategy, score, improvement}</text>
+
+  <!-- Bedrock model badge -->
+  <rect x="305" y="248" width="160" height="16" rx="4" fill="#1a1a2e" stroke="#6c5ce7" stroke-width="0.5"/>
+  <text x="315" y="260" fill="#6c5ce7" font-size="8" font-family="monospace">Claude Sonnet 5 (Bedrock)</text>
+
+  <!-- Arrow: Lambda → AgentCore -->
+  <path d="M 180 175 L 280 175" stroke="#e0e0e8" stroke-width="2" marker-end="url(#arr-white)"/>
+  <text x="200" y="167" fill="#8888a0" font-size="8" font-family="monospace">invoke (1 iter)</text>
+
+  <!-- Arrow: AgentCore → Lambda -->
+  <path d="M 280 210 L 180 210" stroke="#00b894" stroke-width="2" marker-end="url(#arr-green)"/>
+  <text x="195" y="224" fill="#8888a0" font-size="8" font-family="monospace">candidate result</text>
+
+  <!-- Pulse dots on arrows -->
   <circle r="4" fill="#e0e0e8">
-    <animate attributeName="cx" values="310;410" dur="1.5s" repeatCount="indefinite"/>
-    <animate attributeName="cy" values="120;120" dur="1.5s" repeatCount="indefinite"/>
+    <animate attributeName="cx" values="180;280" dur="1.5s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="175;175" dur="1.5s" repeatCount="indefinite"/>
     <animate attributeName="opacity" values="1;0" dur="1.5s" repeatCount="indefinite"/>
   </circle>
   <circle r="4" fill="#00b894">
-    <animate attributeName="cx" values="410;310" dur="1.5s" begin="0.8s" repeatCount="indefinite"/>
-    <animate attributeName="cy" values="160;160" dur="1.5s" begin="0.8s" repeatCount="indefinite"/>
+    <animate attributeName="cx" values="280;180" dur="1.5s" begin="0.8s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="210;210" dur="1.5s" begin="0.8s" repeatCount="indefinite"/>
     <animate attributeName="opacity" values="1;0" dur="1.5s" begin="0.8s" repeatCount="indefinite"/>
   </circle>
 
+  <!-- Results box -->
+  <rect x="280" y="300" width="410" height="55" rx="8" fill="#00b89415" stroke="#00b894" stroke-width="1.5"/>
+  <text x="305" y="322" fill="#00b894" font-size="11" font-weight="600" font-family="monospace">Overnight Result: 4.14 → 8.79 pts/GW (+112%)</text>
+  <text x="305" y="342" fill="#8888a0" font-size="9" font-family="sans-serif">50 iterations · 19 improvements · 38% acceptance · ~$12 total cost</text>
+
+  <!-- Defs -->
   <defs>
-    <marker id="arrow-white" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+    <marker id="arr-pink" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#fd79a8"/>
+    </marker>
+    <marker id="arr-white" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
       <polygon points="0 0, 8 3, 0 6" fill="#e0e0e8"/>
     </marker>
-    <marker id="arrow-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+    <marker id="arr-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
       <polygon points="0 0, 8 3, 0 6" fill="#00b894"/>
     </marker>
   </defs>
