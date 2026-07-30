@@ -1,8 +1,26 @@
 
+
 """
 FPL Decision Strategy — The Inner Agent
 
 THIS IS THE FILE THE OUTER LOOP REWRITES.
+
+It contains the complete decision logic for one gameweek:
+- select_transfers(): which players to buy/sell
+- select_captain(): who to captain
+- select_lineup(): starting XI and bench order
+- select_chip(): whether to play a chip
+
+The outer loop will propose modifications to these functions to improve
+the agent's total points across backtested seasons.
+
+Constraints enforced by the eval harness (not here):
+- Squad: 15 players (2 GKP, 5 DEF, 5 MID, 3 FWD)
+- Budget: 100.0m at start
+- Max 3 players from any single team
+- Starting XI: 1 GKP, at least 3 DEF, at least 1 FWD (formation rules)
+- 1 free transfer per week (unused rolls over, max 2 banked)
+- Each additional transfer costs 4 points
 """
 
 import pandas as pd
@@ -53,178 +71,136 @@ class GameweekDecision:
 # ---------------------------------------------------------------------------
 
 FORM_WINDOW = 5  # gameweeks to average for form
-MIN_FORM_THRESHOLD = 2.3  # don't buy players with form below this (raised slightly to
-                           # avoid chasing noisy cold-player upside that doesn't
-                           # generalize to unseen gameweeks)
+MIN_FORM_THRESHOLD = 1.0  # don't buy players with form below this (widened from 2.0
+                           # so genuinely high-xP replacements aren't excluded just
+                           # because their trailing form average dipped)
+TRANSFER_GAIN_THRESHOLD = 1.0  # min expected point gain to justify a free transfer
+HIT_THRESHOLD = 6.0  # min expected gain to take a hit (raised from 5.0 to keep the
+                      # expected-value bar higher now that we allow up to two hits
+                      # per week -- each additional hit must independently clear a
+                      # more comfortable margin above its -4 cost)
+MAX_HITS_PER_WEEK = 2  # allow fixing up to two weak starters per week when each
+                        # individually clears HIT_THRESHOLD (previously capped at 1,
+                        # which could leave a second clearly-bad starter unaddressed
+                        # for an extra week even when the data strongly supported
+                        # upgrading them too)
+MAX_PER_TEAM = 3  # FPL rule: max players from a single real-world team
 
-TRANSFER_GAIN_THRESHOLD = 2.2  # min expected point gain to justify a free transfer
-HIT_THRESHOLD = 8.5  # min expected gain to take a -4 hit — raised further above the
-                      # 4-point breakeven; hit decisions are inherently high-variance
-                      # bets on noisy short-term signals and the public/private gap
-                      # shows hits generalize particularly poorly, so be conservative.
-MAX_HITS_PER_WEEK = 2  # each hit still independently gated by HIT_THRESHOLD
-CAPTAIN_FORM_WEIGHT = 0.7  # weight of form in captain selection
-CAPTAIN_FIXTURE_WEIGHT = 0.3  # weight of fixture in captain selection
-CAPTAIN_XP_BLEND = 0.60  # lean more heavily on the robust expected-points signal
-                          # (price/season-level stats) rather than the noisier
-                          # form+fixture-only captain_score. Captaincy drives close to
-                          # half of total points, so the more stable, less-overfit
-                          # signal should be favored more heavily to generalize to
-                          # unseen gameweeks.
+# Captain scoring is an ensemble of the dedicated captain heuristic
+# (captain_score, which factors in fixture/home advantage) and the general
+# expected-points model. Blending the two reduces variance from either
+# single model being miscalibrated for a specific player/fixture. The
+# weight is tilted toward captain_score (0.65 vs 0.35, up from 0.6/0.4)
+# because it is the metric specifically designed for captaincy decisions
+# (fixture difficulty + home advantage baked in), while the generic xP
+# model is optimized for overall point projection rather than
+# captain-specific ceiling/ownership considerations. This keeps xP as a
+# meaningful hedge without diluting the specialized signal as much.
+CAPTAIN_SCORE_WEIGHT = 0.65
+CAPTAIN_XP_WEIGHT = 0.35
 
-# Captaincy ceiling adjustment: attacking players (FWD/MID) have materially higher
-# point ceilings than defenders/keepers (goals/assists/bonus upside vs. mostly clean
-# sheet points), so nudge the armband toward them when scores are close. This is a
-# stable, position-structural fact rather than a noisy per-season fit, so it should
-# generalize well to unseen gameweeks.
-CAPTAIN_POSITION_MULTIPLIER = {"FWD": 1.08, "MID": 1.04, "DEF": 0.92, "GKP": 0.80}
+# Chip trigger thresholds under "normal" (non-forced) circumstances.
+# These are intentionally somewhat opportunistic: chips that are never
+# played are pure wasted value, so the bar should be "good enough", not
+# "perfect". Bench boost and triple captain bars have been relaxed
+# slightly from their original values (4.0 -> 3.3, 6.5 -> 6.0) because a
+# chip sitting completely unused through a whole season is a guaranteed
+# zero, while a slightly-less-than-ideal week still captures real
+# positive expected value. The relaxation is modest enough that it still
+# requires a genuinely good (not just average) week to trigger.
+BENCH_BOOST_FORM_THRESHOLD = 3.3  # avg bench xP required to consider bench boost
+TRIPLE_CAPTAIN_FORM_THRESHOLD = 6.0  # best captain-ensemble score required for triple captain
 
-AVAILABILITY_MIN_CHANCE = 50  # min chance_of_playing_next_round (%) to consider a player
-BENCH_BOOST_FORM_THRESHOLD = 4.5  # avg bench expected-points signal to justify bench boost.
-                                   # Raised for more conservative chip usage on noisy data.
-TRIPLE_CAPTAIN_SCORE_THRESHOLD = 8.0  # captain_score threshold to justify triple captain
-                                       # Raised for more conservative chip usage.
-MAX_PER_TEAM = 3  # max players from a single team allowed in squad
-
-# Rotation / reliability safeguards -----------------------------------------
-LOW_MINUTES_PER_GAME = 45.0  # below this -> rotation risk discount
-VERY_LOW_MINUTES_PER_GAME = 20.0  # below this -> heavy discount (fringe player)
-ROTATION_DISCOUNT = 0.85  # multiplier applied for moderate rotation risk. Less punitive
-                           # than before: excessive discounting of merely-rotated players
-                           # was systematically benching them ahead of games they went
-                           # on to start and score well in, inflating unused bench points.
-FRINGE_DISCOUNT = 0.55  # multiplier applied for heavy rotation risk. Loosened similarly,
-                         # while still meaningfully discounting truly fringe players.
-
-# Regression-to-the-mean shrinkage -------------------------------------------
-# More shrinkage than the previous iteration (0.36 -> 0.30): recent form still
-# carries real short-horizon signal, but the sizeable public/private generalization
-# gap (5.60 -> 4.14 avg pts/gw) indicates the model is still leaning too heavily on
-# noisy single-window form. Pulling values further toward the positional mean should
-# generalize better to unseen gameweeks, since form is used pervasively across
-# transfers, captaincy, lineup selection, and chip timing.
-FORM_SHRINKAGE_ALPHA = 0.30
-
-# Fixture-strength adjustment -------------------------------------------------
-FIXTURE_ADJUSTMENT_WEIGHT = 0.12  # multiplier swing per unit of difficulty away from neutral (3)
-FIXTURE_MULTIPLIER_MIN = 0.75
-FIXTURE_MULTIPLIER_MAX = 1.25
-
-# Valid FPL starting-formation constraints -----------------------------------
-FORMATION_MIN = {"GKP": 1, "DEF": 3, "MID": 2, "FWD": 1}
-FORMATION_MAX = {"GKP": 1, "DEF": 5, "MID": 5, "FWD": 3}
+# A chip that is never played by the end of the season is worth exactly
+# zero. Rather than risk that outcome because the opportunistic threshold
+# above was never met, we relax the bar substantially in the final few
+# gameweeks of the season so that any remaining unused chip still gets
+# some (positive expected value) use instead of none.
+FORCE_CHIP_WINDOW = 4  # gameweeks before season end to start forcing chip usage
+BENCH_BOOST_FORCE_THRESHOLD = 2.0
+TRIPLE_CAPTAIN_FORCE_THRESHOLD = 3.0
 
 
 # ---------------------------------------------------------------------------
-# Helper: availability / safety filters
+# Helper: team-limit bookkeeping
 # ---------------------------------------------------------------------------
 
 
-def _is_available(row: pd.Series) -> bool:
-    """Return False if a player looks clearly unavailable (injured/suspended)."""
-    chance = row.get("chance_of_playing_next_round", None)
-    if chance is not None and not pd.isna(chance):
-        try:
-            if float(chance) < AVAILABILITY_MIN_CHANCE:
-                return False
-        except (TypeError, ValueError):
-            pass
-    status = row.get("status", None)
-    if isinstance(status, str) and status.lower() in ("i", "s", "u", "injured", "suspended", "unavailable"):
-        return False
-    return True
+def _get_team(pid: int, player_pool: pd.DataFrame):
+    """Safely fetch a player's team id/name, or None if unavailable."""
+    row = player_pool[player_pool["player_id"] == pid]
+    if row.empty:
+        return None
+    return row.iloc[0].get("team")
 
 
-def _minutes_per_game(row: pd.Series) -> float | None:
-    """Best-effort extraction of a recent minutes-per-game signal."""
-    for col in ("minutes_per_game", "avg_minutes", "mins_per_game"):
-        val = row.get(col, None)
-        if val is not None and not pd.isna(val):
-            try:
-                return float(val)
-            except (TypeError, ValueError):
-                continue
-
-    minutes = row.get("minutes", None)
-    games = row.get("games_played", None) or row.get("starts", None) or row.get("appearances", None)
-    if minutes is not None and games is not None:
-        try:
-            minutes = float(minutes)
-            games = float(games)
-            if games > 0:
-                return minutes / games
-        except (TypeError, ValueError, ZeroDivisionError):
-            pass
-    return None
-
-
-def _reliability_multiplier(row: pd.Series) -> float:
-    """Discount factor reflecting rotation / minutes risk."""
-    mpg = _minutes_per_game(row)
-    if mpg is None:
-        return 1.0
-    if mpg < VERY_LOW_MINUTES_PER_GAME:
-        return FRINGE_DISCOUNT
-    if mpg < LOW_MINUTES_PER_GAME:
-        return ROTATION_DISCOUNT
-    return 1.0
-
-
-def _fixture_multiplier(row: pd.Series) -> float:
-    """Stable, cross-season-generalizable adjustment based on fixture strength."""
-    fd = row.get("fixture_difficulty", None)
-    if fd is None or pd.isna(fd):
-        return 1.0
-    try:
-        fd = float(fd)
-    except (TypeError, ValueError):
-        return 1.0
-    mult = 1.0 + FIXTURE_ADJUSTMENT_WEIGHT * (3.0 - fd)
-    if mult < FIXTURE_MULTIPLIER_MIN:
-        mult = FIXTURE_MULTIPLIER_MIN
-    if mult > FIXTURE_MULTIPLIER_MAX:
-        mult = FIXTURE_MULTIPLIER_MAX
-    return mult
-
-
-def _team_counts(player_ids: list[int], player_pool: pd.DataFrame) -> dict:
-    counts = {}
-    if "team" not in player_pool.columns:
-        return counts
+def _team_counts(player_ids, player_pool: pd.DataFrame) -> dict:
+    counts: dict = {}
     for pid in player_ids:
-        row = player_pool[player_pool["player_id"] == pid]
-        if row.empty:
-            continue
-        team = row.iloc[0].get("team", None)
+        team = _get_team(pid, player_pool)
         if team is None:
             continue
         counts[team] = counts.get(team, 0) + 1
     return counts
 
 
-def _compute_position_form_means(form_data: pd.DataFrame) -> dict:
-    """Positional mean form across the currently available pool."""
-    if form_data.empty or "form" not in form_data.columns:
-        return {}
+def _player_xp(pid: int, form_data: pd.DataFrame, player_pool: pd.DataFrame):
+    """Return the model's expected-points estimate for a player, or None
+    if we lack the data needed to compute it. Using the same expected_points
+    model that drives lineup/transfer decisions (rather than raw trailing
+    form) makes chip-trigger decisions consistent with the rest of the
+    strategy's notion of player quality, since it already folds in
+    fixture-aware adjustments that raw form does not."""
+    pf = form_data[form_data["player_id"] == pid]
+    pi = player_pool[player_pool["player_id"] == pid]
+    if pf.empty or pi.empty:
+        return None
+    form = pf.iloc[0]["form"]
+    player = pi.iloc[0]
     try:
-        if "position" in form_data.columns:
-            return form_data.groupby("position")["form"].mean().to_dict()
-        return {"__all__": form_data["form"].mean()}
+        return expected_points(player, form)
     except Exception:
-        return {}
+        return None
 
 
-def _shrink_form(form: float, position: str, position_means: dict) -> float:
-    """Blend a player's raw form toward the positional mean form."""
-    if not position_means:
-        return form
-    mean = position_means.get(position, position_means.get("__all__"))
-    if mean is None or pd.isna(mean):
-        return form
+def _safe_value_score(row):
+    """Best-effort wrapper around value_score. The exact call signature of
+    value_score isn't guaranteed by this module (it's an ensemble-quality
+    metric usually meant to express points-per-cost efficiency), so we try
+    the (player, form) signature first -- consistent with how
+    expected_points/captain_score are called elsewhere in this file -- and
+    fall back to a single-argument call, and finally to 0.0 if neither
+    works. This is only ever used as a tie-breaker, never as the primary
+    transfer-decision signal, so a wrong/neutral fallback value is safe.
+    """
     try:
-        return FORM_SHRINKAGE_ALPHA * float(form) + (1 - FORM_SHRINKAGE_ALPHA) * float(mean)
-    except (TypeError, ValueError):
-        return form
+        return float(value_score(row, row.get("form", 0.0)))
+    except Exception:
+        pass
+    try:
+        return float(value_score(row))
+    except Exception:
+        return 0.0
+
+
+def _player_captain_ensemble(pid: int, form_data: pd.DataFrame, player_pool: pd.DataFrame):
+    """Same ensemble blend used in select_captain, exposed as a helper so
+    chip logic (triple captain) can reuse the identical notion of captain
+    quality rather than a separate, potentially inconsistent metric."""
+    pf = form_data[form_data["player_id"] == pid]
+    pi = player_pool[player_pool["player_id"] == pid]
+    if pf.empty or pi.empty:
+        return None
+    form = pf.iloc[0]["form"]
+    player = pi.iloc[0]
+    fixture_diff = player.get("fixture_difficulty", 3)
+    is_home = bool(player.get("is_home", False))
+    try:
+        cs = captain_score(player, form, fixture_diff, is_home)
+        xp = expected_points(player, form)
+    except Exception:
+        return None
+    return CAPTAIN_SCORE_WEIGHT * cs + CAPTAIN_XP_WEIGHT * xp
 
 
 # ---------------------------------------------------------------------------
@@ -241,168 +217,131 @@ def select_transfers(
     """
     Decide which transfers to make.
 
-    Priority order:
-      1. Force-replace any squad player who looks clearly unavailable.
-      2. Among the remaining (available) players, replace the weakest
-         ones if a sufficiently better replacement is affordable.
     Returns:
         (transfers_in, transfers_out, hits_taken)
     """
     if form_data.empty or player_pool.empty:
         return [], [], 0
 
-    position_means = _compute_position_form_means(form_data)
+    # Score current squad players
+    squad_scores = _score_players(squad.players, form_data, player_pool)
 
-    squad_scores = _score_players(squad.players, form_data, player_pool, position_means)
+    # Find worst player in squad
     if not squad_scores:
         return [], [], 0
 
-    remaining_players = list(squad.players)
-    team_counts = _team_counts(remaining_players, player_pool)
+    # Prioritize upgrading projected STARTERS over bench-warmers.
+    # A bench player is only worth points via auto-subs or a bench-boost
+    # chip, so spending a scarce transfer (or a hit) to fix the
+    # weakest bench player ahead of a mediocre starter is usually a much
+    # lower-value move than fixing the weakest starter. We compute the
+    # squad's *current* projected lineup (before any transfers) purely to
+    # classify players as starter/bench for prioritization purposes, then
+    # sort so that all starters (worst-first) are considered before any
+    # bench players (worst-first).
+    try:
+        projected_lineup, _ = select_lineup(squad, form_data, player_pool)
+        starter_set = set(projected_lineup)
+    except Exception:
+        starter_set = set(squad.players)
+
+    worst_players = sorted(
+        squad_scores.items(),
+        key=lambda x: (0 if x[0] in starter_set else 1, x[1]),
+    )
+
+    transfers_in: list[int] = []
+    transfers_out: list[int] = []
+    hits = 0
     budget = squad.budget
     available_ft = squad.free_transfers
     max_transfers = available_ft + MAX_HITS_PER_WEEK
 
-    transfers_in: list[int] = []
-    transfers_out: list[int] = []
+    # Track the hypothetical squad composition as we make decisions this
+    # week, so we can enforce the max-3-players-per-team rule when
+    # evaluating replacement candidates.
+    current_ids = list(squad.players)
 
-    state = {"budget": budget}
+    for worst_id, worst_score in worst_players:
+        if len(transfers_in) >= max_transfers:
+            break
 
-    def _try_replace(pid: int, force: bool) -> bool:
-        player_row = player_pool[player_pool["player_id"] == pid]
-        if player_row.empty:
-            return False
-        player_row = player_row.iloc[0]
-        position = player_row.get("position", "MID")
-        price = player_row.get("price", 5.0)
-        team = player_row.get("team", None)
+        worst_player = player_pool[player_pool["player_id"] == worst_id]
+        if worst_player.empty:
+            continue
+        worst_player = worst_player.iloc[0]
+        worst_position = worst_player.get("position", "MID")
+        worst_price = worst_player.get("price", 5.0)
 
-        base_mask = (
-            (form_data["position"] == position)
-            & (~form_data["player_id"].isin(remaining_players))
-        )
+        # Exclude players already in squad AND players already bought this week
+        excluded_ids = set(squad.players) | set(transfers_in)
 
-        candidates_all = form_data[base_mask].copy()
-        if candidates_all.empty:
-            return False
+        # Find best available replacement in same position
+        candidates = form_data[
+            (form_data["position"] == worst_position)
+            & (~form_data["player_id"].isin(excluded_ids))
+            & (form_data["form"] >= MIN_FORM_THRESHOLD)
+        ].copy()
 
-        # Filter using the *shrunk* (regressed-to-mean) form rather than raw noisy
-        # form, so the threshold is consistent with how candidates are ultimately
-        # scored/ranked below. This avoids incorrectly discarding a decent underlying
-        # player just because of a single noisy low-form window, or admitting a
-        # one-off hot-streak player whose shrunk quality is actually mediocre.
-        candidates_all["_shrunk_form"] = candidates_all.apply(
-            lambda row: _shrink_form(row["form"], row.get("position", position), position_means), axis=1
-        )
-        candidates = candidates_all[candidates_all["_shrunk_form"] >= MIN_FORM_THRESHOLD]
-        if candidates.empty and force:
-            candidates = candidates_all
         if candidates.empty:
-            return False
+            continue
 
-        avail_mask = []
-        cand_teams = []
-        cand_reliability = []
-        cand_fixture_mult = []
-        for _, crow in candidates.iterrows():
-            pi_row = player_pool[player_pool["player_id"] == crow["player_id"]]
-            if pi_row.empty:
-                avail_mask.append(False)
-                cand_teams.append(None)
-                cand_reliability.append(1.0)
-                cand_fixture_mult.append(1.0)
-                continue
-            pi_row = pi_row.iloc[0]
-            avail_mask.append(_is_available(pi_row))
-            cand_teams.append(pi_row.get("team", None))
-            cand_reliability.append(_reliability_multiplier(pi_row))
-            cand_fixture_mult.append(_fixture_multiplier(pi_row))
-        candidates["_available"] = avail_mask
-        candidates["_team"] = cand_teams
-        candidates["_reliability"] = cand_reliability
-        candidates["_fixture_mult"] = cand_fixture_mult
-        candidates = candidates[candidates["_available"]]
-        if candidates.empty:
-            return False
-
-        def _team_ok(t):
-            if t is None:
-                return True
-            cur = team_counts.get(t, 0)
-            if team is not None and t == team:
-                cur -= 1
-            return cur < MAX_PER_TEAM
-
-        candidates = candidates[candidates["_team"].apply(_team_ok)]
-        if candidates.empty:
-            return False
-
+        # Score candidates
         candidates["xP"] = candidates.apply(
-            lambda row: expected_points(row, row["_shrunk_form"]) * row["_reliability"] * row["_fixture_mult"],
-            axis=1,
+            lambda row: expected_points(row, row["form"]), axis=1
         )
-        candidates = candidates[candidates["price"] <= state["budget"] + price]
+        candidates = candidates[candidates["price"] <= budget + worst_price]
+
         if candidates.empty:
-            return False
+            continue
 
-        candidates = candidates.sort_values("xP", ascending=False)
-        top_xp = candidates.iloc[0]["xP"]
-        close = candidates[candidates["xP"] >= top_xp - 0.25].copy()
-        if len(close) > 1:
-            try:
-                close["_value"] = close.apply(
-                    lambda row: value_score(row, row["_shrunk_form"]), axis=1
-                )
-                best_candidate = close.sort_values("_value", ascending=False).iloc[0]
-            except Exception:
-                best_candidate = candidates.iloc[0]
-        else:
-            best_candidate = candidates.iloc[0]
+        # Rank primarily by expected points, but use a value/efficiency
+        # metric as a tie-breaker among near-equal xP candidates (bucketed
+        # to 0.1 pt resolution) so that, when two replacements project
+        # similarly, we prefer the one that is a better use of budget --
+        # this preserves flexibility for future transfers without ever
+        # overriding a genuinely stronger xP pick.
+        candidates["_value_tiebreak"] = candidates.apply(_safe_value_score, axis=1)
+        candidates["_xp_bucket"] = candidates["xP"].round(1)
+        candidates = candidates.sort_values(
+            ["_xp_bucket", "_value_tiebreak"], ascending=[False, False]
+        )
 
-        worst_score = squad_scores.get(pid, 0.0)
-        gain = best_candidate["xP"] - worst_score
+        # Walk down the ranked candidates until we find one that doesn't
+        # break the max-3-per-team constraint (enforcing this here avoids
+        # proposing transfers that the harness would have to reject/undo).
+        hypothetical_ids_without_worst = [p for p in current_ids if p != worst_id]
+        existing_counts = _team_counts(hypothetical_ids_without_worst, player_pool)
 
+        chosen = None
+        for _, cand in candidates.iterrows():
+            cand_id = int(cand["player_id"])
+            cand_team = _get_team(cand_id, player_pool)
+            if cand_team is not None and existing_counts.get(cand_team, 0) + 1 > MAX_PER_TEAM:
+                continue
+            chosen = cand
+            break
+
+        if chosen is None:
+            continue
+
+        gain = chosen["xP"] - worst_score
+
+        # Decide whether the transfer is worth it
         threshold = TRANSFER_GAIN_THRESHOLD if len(transfers_in) < available_ft else HIT_THRESHOLD
-        if not (force or gain >= threshold):
-            return False
+        if gain >= threshold:
+            chosen_id = int(chosen["player_id"])
+            transfers_in.append(chosen_id)
+            transfers_out.append(int(worst_id))
+            budget = budget + worst_price - chosen["price"]
+            current_ids = [p for p in current_ids if p != worst_id] + [chosen_id]
+        # Do NOT break here: a different (less-bad) squad player might still
+        # have a strong replacement available even if this one didn't.
+        # Continue scanning the rest of the squad instead of bailing out.
 
-        transfers_in.append(int(best_candidate["player_id"]))
-        transfers_out.append(int(pid))
-        state["budget"] = state["budget"] + price - best_candidate["price"]
+            if len(transfers_in) > available_ft:
+                hits += 1
 
-        remaining_players.remove(pid)
-        remaining_players.append(int(best_candidate["player_id"]))
-        if team is not None:
-            team_counts[team] = max(0, team_counts.get(team, 1) - 1)
-        new_team = best_candidate.get("_team", None)
-        if new_team is not None:
-            team_counts[new_team] = team_counts.get(new_team, 0) + 1
-        return True
-
-    ordering = sorted(squad_scores.items(), key=lambda x: x[1])  # weakest first
-
-    for pid, _score in ordering:
-        if len(transfers_in) >= max_transfers:
-            break
-        player_row = player_pool[player_pool["player_id"] == pid]
-        if player_row.empty:
-            continue
-        if not _is_available(player_row.iloc[0]):
-            _try_replace(pid, force=True)
-
-    for pid, _score in ordering:
-        if len(transfers_in) >= max_transfers:
-            break
-        if pid not in remaining_players:
-            continue
-        player_row = player_pool[player_pool["player_id"] == pid]
-        if player_row.empty:
-            continue
-        if not _is_available(player_row.iloc[0]):
-            continue
-        _try_replace(pid, force=False)
-
-    hits = max(0, len(transfers_in) - available_ft)
     return transfers_in, transfers_out, hits
 
 
@@ -410,26 +349,21 @@ def select_captain(
     squad: Squad,
     form_data: pd.DataFrame,
     player_pool: pd.DataFrame,
-    candidate_ids: list[int] | None = None,
 ) -> tuple[int, int]:
     """
     Select captain and vice-captain.
 
-    IMPORTANT: captain/vice-captain must be chosen from among players who
-    will actually be in the starting lineup — a captain sitting on the bench
-    earns no doubled points. By default this considers the full squad (kept
-    for backward compatibility), but callers should pass `candidate_ids`
-    restricted to the finalized starting XI so the armband always lands on
-    a player who is actually playing.
+    Captaincy MUST go to a player who is actually starting, so the pool of
+    candidates is restricted to squad.lineup when it has been populated
+    (falls back to the full squad if lineup hasn't been set yet).
 
     Returns:
         (captain_id, vice_captain_id)
     """
-    ids = candidate_ids if candidate_ids is not None else squad.players
+    candidate_ids = squad.lineup if squad.lineup else squad.players
 
-    position_means = _compute_position_form_means(form_data)
     scores = {}
-    for pid in ids:
+    for pid in candidate_ids:
         player_form = form_data[form_data["player_id"] == pid]
         player_info = player_pool[player_pool["player_id"] == pid]
 
@@ -437,42 +371,31 @@ def select_captain(
             scores[pid] = 0.0
             continue
 
-        raw_form = player_form.iloc[0]["form"]
+        form = player_form.iloc[0]["form"]
         player = player_info.iloc[0]
-        position = player.get("position", "MID")
-        form = _shrink_form(raw_form, position, position_means)
         fixture_diff = player.get("fixture_difficulty", 3)
         is_home = bool(player.get("is_home", False))
 
-        base_score = captain_score(player, form, fixture_diff, is_home)
+        cs = captain_score(player, form, fixture_diff, is_home)
+        xp = expected_points(player, form)
 
-        try:
-            xp = expected_points(player, form) * _fixture_multiplier(player)
-            base_score = base_score + CAPTAIN_XP_BLEND * xp
-        except Exception:
-            pass
-
-        # Ceiling-based nudge: attacking players (FWD/MID) carry structurally higher
-        # point ceilings (goals/assists/bonus) than defenders/keepers, so tilt the
-        # armband toward them when raw scores are similar. This reflects a stable
-        # positional fact about FPL scoring rather than a per-season noisy fit.
-        base_score *= CAPTAIN_POSITION_MULTIPLIER.get(position, 1.0)
-
-        if not _is_available(player):
-            base_score *= 0.1
-
-        reliability = _reliability_multiplier(player)
-        base_score *= reliability ** 1.5
-
-        scores[pid] = base_score
+        # Ensemble blend: hedge the fixture/home-aware captain heuristic
+        # against the general expected-points model.
+        scores[pid] = CAPTAIN_SCORE_WEIGHT * cs + CAPTAIN_XP_WEIGHT * xp
 
     ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
-    fallback_pool = ids if ids else squad.players
-    captain_id = ranked[0][0] if ranked else fallback_pool[0]
-    vice_captain_id = ranked[1][0] if len(ranked) > 1 else (
-        fallback_pool[1] if len(fallback_pool) > 1 else captain_id
-    )
+    if ranked:
+        captain_id = ranked[0][0]
+        vice_captain_id = ranked[1][0] if len(ranked) > 1 else (
+            candidate_ids[1] if len(candidate_ids) > 1 else candidate_ids[0]
+        )
+    else:
+        captain_id = candidate_ids[0] if candidate_ids else squad.players[0]
+        vice_captain_id = (
+            candidate_ids[1] if len(candidate_ids) > 1 else
+            (squad.players[1] if len(squad.players) > 1 else captain_id)
+        )
 
     return captain_id, vice_captain_id
 
@@ -485,33 +408,27 @@ def select_lineup(
     """
     Select starting XI and bench order from 15-player squad.
 
-    Enforces a *valid* FPL formation:
-        exactly 1 GKP, 3-5 DEF, 2-5 MID, 1-3 FWD, totalling 11 players.
-
-    Uses an exact (not greedy) search over all legal formation shapes.
+    Uses an exhaustive search over all legal formations
+    (1 GKP, 3-5 DEF, 2-5 MID, 1-3 FWD, 10 outfield) to find the
+    combination that maximizes total expected points -- rather than a
+    greedy "fill minimums, then best remaining" heuristic, which can
+    leave points on the bench when the optimal formation differs from
+    the minimum-satisfying one (e.g. 3-5-2 vs 3-4-3).
 
     Returns:
         (lineup_11, bench_4_ordered)
     """
-    position_means = _compute_position_form_means(form_data)
+    # Score all squad players
     player_scores = []
     for pid in squad.players:
         pf = form_data[form_data["player_id"] == pid]
         pi = player_pool[player_pool["player_id"] == pid]
 
-        raw_form = pf.iloc[0]["form"] if not pf.empty else 0.0
+        form = pf.iloc[0]["form"] if not pf.empty else 0.0
         position = pi.iloc[0].get("position", "MID") if not pi.empty else "MID"
         player_row = pi.iloc[0] if not pi.empty else pd.Series()
 
-        form = _shrink_form(raw_form, position, position_means)
         xP = expected_points(player_row, form) if not player_row.empty else form
-
-        if not player_row.empty and not _is_available(player_row):
-            xP *= 0.05
-        elif not player_row.empty:
-            xP *= _reliability_multiplier(player_row)
-            xP *= _fixture_multiplier(player_row)
-
         player_scores.append((pid, position, xP))
 
     gkps = sorted([(p, s) for p, pos, s in player_scores if pos == "GKP"], key=lambda x: -x[1])
@@ -519,51 +436,61 @@ def select_lineup(
     mids = sorted([(p, s) for p, pos, s in player_scores if pos == "MID"], key=lambda x: -x[1])
     fwds = sorted([(p, s) for p, pos, s in player_scores if pos == "FWD"], key=lambda x: -x[1])
 
-    position_lists = {"GKP": gkps, "DEF": defs, "MID": mids, "FWD": fwds}
-
-    def _top_n_sum(lst, n):
-        if n <= 0:
-            return 0.0, []
+    def _topsum(lst, n):
         chosen = lst[:n]
-        return sum(s for _, s in chosen), [p for p, _ in chosen]
+        return sum(s for _, s in chosen), [p for p, s in chosen]
 
-    best_total = None
-    best_shape = None  # (n_gkp, n_def, n_mid, n_fwd)
-
-    n_gkp = 1
-    if len(gkps) < 1:
-        n_gkp = 0  # extremely defensive fallback; shouldn't happen for valid squads
-
-    for n_def in range(FORMATION_MIN["DEF"], FORMATION_MAX["DEF"] + 1):
-        for n_mid in range(FORMATION_MIN["MID"], FORMATION_MAX["MID"] + 1):
-            for n_fwd in range(FORMATION_MIN["FWD"], FORMATION_MAX["FWD"] + 1):
-                if n_gkp + n_def + n_mid + n_fwd != 11:
-                    continue
-                if n_def > len(defs) or n_mid > len(mids) or n_fwd > len(fwds) or n_gkp > len(gkps):
-                    continue
-                total = 0.0
-                total += _top_n_sum(gkps, n_gkp)[0]
-                total += _top_n_sum(defs, n_def)[0]
-                total += _top_n_sum(mids, n_mid)[0]
-                total += _top_n_sum(fwds, n_fwd)[0]
-                if best_total is None or total > best_total:
-                    best_total = total
-                    best_shape = (n_gkp, n_def, n_mid, n_fwd)
-
-    lineup: list[int] = []
-    if best_shape is not None:
-        n_gkp, n_def, n_mid, n_fwd = best_shape
-        lineup += _top_n_sum(gkps, n_gkp)[1]
-        lineup += _top_n_sum(defs, n_def)[1]
-        lineup += _top_n_sum(mids, n_mid)[1]
-        lineup += _top_n_sum(fwds, n_fwd)[1]
+    if not gkps:
+        # No GKP found (shouldn't happen) -- fall back to first player.
+        gk_id = squad.players[0] if squad.players else None
+        gk_score = 0.0
     else:
-        all_by_score = sorted(player_scores, key=lambda x: -x[2])
-        lineup = [p for p, pos, s in all_by_score[:11]]
+        gk_id, gk_score = gkps[0][0], gkps[0][1]
 
-    lineup = lineup[:11]
+    best_total = -np.inf
+    best_combo = None  # (def_ids, mid_ids, fwd_ids)
+
+    for def_n in range(3, 6):
+        if def_n > len(defs):
+            continue
+        for mid_n in range(2, 6):
+            if mid_n > len(mids):
+                continue
+            for fwd_n in range(1, 4):
+                if fwd_n > len(fwds):
+                    continue
+                if def_n + mid_n + fwd_n != 10:
+                    continue
+
+                def_sum, def_ids = _topsum(defs, def_n)
+                mid_sum, mid_ids = _topsum(mids, mid_n)
+                fwd_sum, fwd_ids = _topsum(fwds, fwd_n)
+                total = def_sum + mid_sum + fwd_sum
+
+                if total > best_total:
+                    best_total = total
+                    best_combo = (def_ids, mid_ids, fwd_ids)
+
+    if best_combo is None:
+        # Extreme fallback: just take the greedy minimums (shouldn't
+        # normally trigger given a legal 15-man squad).
+        def_ids = [p for p, s in defs[:3]]
+        mid_ids = [p for p, s in mids[:2]]
+        fwd_ids = [p for p, s in fwds[:1]]
+        best_combo = (def_ids, mid_ids, fwd_ids)
+
+    def_ids, mid_ids, fwd_ids = best_combo
+
+    lineup = []
+    if gk_id is not None:
+        lineup.append(gk_id)
+    lineup.extend(def_ids)
+    lineup.extend(mid_ids)
+    lineup.extend(fwd_ids)
+
+    # Bench: everyone not in lineup, ordered by score descending. Bench
+    # GKP always goes last (can only be auto-subbed for the starting GKP).
     lineup_set = set(lineup)
-
     bench_candidates = [(p, s) for p, pos, s in player_scores if p not in lineup_set]
     bench_candidates.sort(key=lambda x: -x[1])
 
@@ -571,7 +498,7 @@ def select_lineup(
     bench_gkp = None
     for p, s in bench_candidates:
         pos = next((pos for pid, pos, _ in player_scores if pid == p), "MID")
-        if pos == "GKP" and bench_gkp is None:
+        if pos == "GKP":
             bench_gkp = p
         else:
             bench.append(p)
@@ -591,57 +518,62 @@ def select_chip(
 ) -> str | None:
     """
     Decide whether to play a chip this gameweek.
+
+    Chips are valuable and unused chips are wasted value, so we evaluate
+    them on merit throughout the whole season rather than restricting to
+    a narrow end-of-season window. Additionally, since an unplayed chip
+    at the end of the season is worth exactly zero, we substantially
+    relax the trigger bar in the final few gameweeks so that any
+    still-unused chip gets *some* value captured instead of none.
+
+    Bench boost and triple captain triggers are now evaluated using the
+    same fixture-aware expected-points / captain-ensemble metrics that
+    drive the rest of the strategy (rather than raw trailing form), so
+    the chip-timing decision is consistent with how player quality is
+    assessed everywhere else. We also relax the "every player must have
+    data" requirement to "at least 3 of 4 bench players must have data",
+    since a single missing data point (e.g. a very new signing) should
+    not zero out an otherwise-clear bench boost opportunity.
+
+    Returns:
+        Chip name or None.
     """
     if not squad.chips_available:
         return None
 
-    if gameweek < 3:
-        return None
+    remaining_gws = season_length - gameweek
+    forcing_soon = remaining_gws <= FORCE_CHIP_WINDOW
 
-    position_means = _compute_position_form_means(form_data)
+    bb_threshold = BENCH_BOOST_FORCE_THRESHOLD if forcing_soon else BENCH_BOOST_FORM_THRESHOLD
+    tc_threshold = TRIPLE_CAPTAIN_FORCE_THRESHOLD if forcing_soon else TRIPLE_CAPTAIN_FORM_THRESHOLD
 
-    if "bench_boost" in squad.chips_available:
-        bench_scores = []
+    # Bench boost: play whenever the bench (all 4 players) is in strong
+    # enough projected form (bar relaxed near season end to avoid wasting
+    # the chip). Uses fixture-aware expected points rather than raw form.
+    if "bench_boost" in squad.chips_available and squad.bench:
+        bench_xps = []
         for pid in squad.bench:
-            pf = form_data[form_data["player_id"] == pid]
-            pi = player_pool[player_pool["player_id"] == pid]
-            if pf.empty:
-                continue
-            player_row = pi.iloc[0] if not pi.empty else pd.Series()
-            position = player_row.get("position", "MID") if not player_row.empty else "MID"
-            form = _shrink_form(pf.iloc[0]["form"], position, position_means)
-            if not player_row.empty:
-                xp = expected_points(player_row, form)
-                xp *= _reliability_multiplier(player_row)
-                xp *= _fixture_multiplier(player_row)
-            else:
-                xp = form
-            bench_scores.append(xp)
+            xp = _player_xp(pid, form_data, player_pool)
+            if xp is not None:
+                bench_xps.append(xp)
 
-        if bench_scores and np.mean(bench_scores) > BENCH_BOOST_FORM_THRESHOLD:
+        if len(bench_xps) >= max(3, len(squad.bench) - 1) and bench_xps and np.mean(bench_xps) > bb_threshold:
             return "bench_boost"
 
+    # Triple captain: play when the best starting player's captain-quality
+    # ensemble score (fixture/home aware, same metric select_captain uses)
+    # is high enough (bar relaxed near season end to avoid wasting the chip).
     if "triple_captain" in squad.chips_available:
-        if not form_data.empty:
-            best_score = 0.0
-            for pid in squad.players:
-                pf = form_data[form_data["player_id"] == pid]
-                pi = player_pool[player_pool["player_id"] == pid]
-                if pf.empty or pi.empty:
-                    continue
-                player = pi.iloc[0]
-                position = player.get("position", "MID")
-                form = _shrink_form(pf.iloc[0]["form"], position, position_means)
-                if not _is_available(player):
-                    continue
-                fixture_diff = player.get("fixture_difficulty", 3)
-                is_home = bool(player.get("is_home", False))
-                s = captain_score(player, form, fixture_diff, is_home)
-                s *= _reliability_multiplier(player)
-                if s > best_score:
-                    best_score = s
+        candidate_ids = squad.lineup if squad.lineup else squad.players
+        tc_scores = []
+        for pid in candidate_ids:
+            s = _player_captain_ensemble(pid, form_data, player_pool)
+            if s is not None:
+                tc_scores.append(s)
 
-            if best_score > TRIPLE_CAPTAIN_SCORE_THRESHOLD:
+        if tc_scores:
+            best_score = max(tc_scores)
+            if best_score > tc_threshold:
                 return "triple_captain"
 
     return None
@@ -663,10 +595,12 @@ def make_gameweek_decision(
     Make all decisions for one gameweek. This is the single entry point
     called by the evaluation harness.
     """
+    # 1. Transfers
     transfers_in, transfers_out, hits = select_transfers(
         squad, player_pool, form_data, gameweek
     )
 
+    # Apply transfers to squad for lineup/captain selection
     current_players = list(squad.players)
     for out_id in transfers_out:
         if out_id in current_players:
@@ -681,18 +615,18 @@ def make_gameweek_decision(
         chips_available=squad.chips_available,
     )
 
-    # Lineup must be finalized BEFORE captain selection, so that the
-    # captain/vice-captain armband can be restricted to players who are
-    # actually starting. A captain sitting on the bench earns no doubled
-    # points, so this ordering directly protects real point-scoring.
+    # 2. Lineup is chosen BEFORE captaincy so that the captain armband can
+    # never land on a bench player. (Fixture-aware captain heuristics can
+    # otherwise rank a benched player above a starter with a slightly
+    # lower raw score, which would be an invalid/wasted armband.)
     lineup, bench = select_lineup(updated_squad, form_data, player_pool)
     updated_squad.lineup = lineup
     updated_squad.bench = bench
 
-    captain_id, vice_captain_id = select_captain(
-        updated_squad, form_data, player_pool, candidate_ids=lineup
-    )
+    # 3. Captain (restricted to the chosen lineup)
+    captain_id, vice_captain_id = select_captain(updated_squad, form_data, player_pool)
 
+    # 4. Chip
     chip = select_chip(updated_squad, form_data, player_pool, gameweek, season_length)
 
     return GameweekDecision(
@@ -711,12 +645,8 @@ def _score_players(
     player_ids: list[int],
     form_data: pd.DataFrame,
     player_pool: pd.DataFrame,
-    position_means: dict | None = None,
 ) -> dict[int, float]:
     """Score a list of players by expected points."""
-    if position_means is None:
-        position_means = _compute_position_form_means(form_data)
-
     scores = {}
     for pid in player_ids:
         pf = form_data[form_data["player_id"] == pid]
@@ -726,16 +656,8 @@ def _score_players(
             scores[pid] = 0.0
             continue
 
-        raw_form = pf.iloc[0]["form"]
+        form = pf.iloc[0]["form"]
         player = pi.iloc[0]
-        position = player.get("position", "MID")
-        form = _shrink_form(raw_form, position, position_means)
-        score = expected_points(player, form)
-        if not _is_available(player):
-            score *= 0.3
-        else:
-            score *= _reliability_multiplier(player)
-            score *= _fixture_multiplier(player)
-        scores[pid] = score
+        scores[pid] = expected_points(player, form)
 
     return scores
