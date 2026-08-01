@@ -41,8 +41,8 @@ outer_loop:
 # Backtest settings
 backtest:
   seasons:                    # Seasons to backtest on
-    - "2022-23"
-    - "2023-24"
+    - "2024-25"
+    - "2025-26"
   public_gw_ratio: 0.6       # Fraction of gameweeks visible to inner agent
   random_seed: 42             # Deterministic public/private split
   start_gameweek: 5           # Skip first N GWs (need form history)
@@ -51,11 +51,11 @@ backtest:
 # Data settings
 data:
   seasons_to_fetch:           # Which seasons to download
-    - "2020-21"
     - "2021-22"
     - "2022-23"
     - "2023-24"
     - "2024-25"
+    - "2025-26"
 
 # Output settings
 output:
