@@ -14,4 +14,4 @@ COPY . .
 EXPOSE 8080
 
 # Run with OpenTelemetry auto-instrumentation for AgentCore observability
-CMD ["opentelemetry-instrument", "python", "deploy/full_loop.py"]
+CMD ["python", "deploy/full_loop.py"]
