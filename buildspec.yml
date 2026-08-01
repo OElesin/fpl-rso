@@ -1,0 +1,100 @@
+version: 0.2
+
+# CodeBuild buildspec for FPL-RSO
+# Two phases: BUILD (rebuild image + update AgentCore) and DEPLOY (update bot Lambda)
+# Triggered by: EventBridge schedule or manual
+
+env:
+  variables:
+    REGION: us-east-1
+    ACCOUNT: "514965996716"
+    ECR_REPO: 514965996716.dkr.ecr.us-east-1.amazonaws.com/fpl-rso
+    AGENTCORE_ID: fplrso_loop-YvEJ6s29Vd
+    STATE_TABLE: fpl-rso-state
+    LAMBDA_ORCHESTRATOR: fpl-rso-orchestrator
+    LAMBDA_BOT: fpl-rso-service-TelegramWebhook-7XLhspJ9YcHa
+    LAMBDA_API: fpl-rso-service-FplRsoApi-GeTgg76wRBIi
+    RULE_NAME: fpl-rso-iteration
+    MODEL: claude-sonnet-5
+    ITERATIONS: "50"
+    SEASONS: '["2024-25","2025-26"]'
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      - pip install boto3 requests
+
+  pre_build:
+    commands:
+      - echo "Logging into ECR..."
+      - aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $ECR_REPO
+
+  build:
+    commands:
+      - |
+        if [ "$BUILD_PHASE" = "deploy_bot" ]; then
+          echo "=== PHASE: Update bot with latest strategy ==="
+          python deploy/codebuild_update_bot.py
+        else
+          echo "=== PHASE: Build image + kick off RSI loop ==="
+          
+          # Build and push Docker image
+          echo "Building Docker image..."
+          docker build -f Dockerfile -t fpl-rso .
+          docker tag fpl-rso:latest $ECR_REPO:latest
+          docker push $ECR_REPO:latest
+          
+          # Update AgentCore Runtime
+          echo "Updating AgentCore..."
+          python -c "
+          import boto3, time
+          client = boto3.client('bedrock-agentcore-control', region_name='$REGION')
+          client.update_agent_runtime(
+              agentRuntimeId='$AGENTCORE_ID',
+              agentRuntimeArtifact={'containerConfiguration': {'containerUri': '$ECR_REPO:latest'}},
+              roleArn='arn:aws:iam::$ACCOUNT:role/AgentCoreRuntimeRole',
+              networkConfiguration={'networkMode': 'PUBLIC'},
+          )
+          # Wait for READY
+          for i in range(24):
+              time.sleep(5)
+              status = client.get_agent_runtime(agentRuntimeId='$AGENTCORE_ID')['status']
+              if status == 'READY':
+                  print(f'AgentCore READY after {(i+1)*5}s')
+                  break
+          "
+          
+          # Reset DynamoDB state
+          RUN_ID="run-$(date +%Y%m%d-%H%M)"
+          echo "Starting run: $RUN_ID"
+          python -c "
+          import boto3
+          dynamodb = boto3.resource('dynamodb', region_name='$REGION')
+          table = dynamodb.Table('$STATE_TABLE')
+          scan = table.scan()
+          for item in scan.get('Items', []):
+              table.delete_item(Key={'run_id': item['run_id']})
+          print('State cleared')
+          "
+          
+          # Update Lambda orchestrator config
+          aws lambda update-function-configuration \
+            --function-name $LAMBDA_ORCHESTRATOR \
+            --environment "Variables={STATE_TABLE=$STATE_TABLE,AGENTCORE_ARN=arn:aws:bedrock-agentcore:$REGION:$ACCOUNT:runtime/$AGENTCORE_ID,AWS_REGION_NAME=$REGION,EVENTBRIDGE_RULE=$RULE_NAME,RUN_ID=$RUN_ID,MAX_ITERATIONS=$ITERATIONS,MODEL=$MODEL,SEASONS=$SEASONS}" \
+            --region $REGION > /dev/null
+          
+          # Enable EventBridge rule to start the loop
+          aws events enable-rule --name $RULE_NAME --region $REGION
+          
+          # Enable completion checker (polls until RSI loop finishes)
+          aws events enable-rule --name fpl-rso-completion-check --region $REGION
+          
+          echo "RSI loop started: $RUN_ID ($ITERATIONS iterations)"
+          echo "Completion checker enabled — will auto-deploy bot when done"
+        fi
+
+  post_build:
+    commands:
+      - echo "Done."
