@@ -16,7 +16,7 @@ env:
     LAMBDA_API: fpl-rso-service-FplRsoApi-GeTgg76wRBIi
     RULE_NAME: fpl-rso-iteration
     MODEL: claude-sonnet-5
-    ITERATIONS: "50"
+    ITERATIONS: "100"
     SEASONS: '["2024-25","2025-26"]'
 
 phases:
