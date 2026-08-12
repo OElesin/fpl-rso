@@ -123,6 +123,46 @@ def disable_rule():
         print(f"Could not disable rule: {e}")
 
 
+def _get_previous_best_strategy(current_run_id: str) -> str | None:
+    """
+    Find the best strategy from any previously completed run.
+    This ensures each new run builds on top of the last improvement
+    rather than starting from scratch (compound RSI).
+    """
+    try:
+        dynamodb = boto3.resource("dynamodb", region_name=REGION)
+        table = dynamodb.Table(TABLE_NAME)
+
+        scan = table.scan()
+        items = scan.get("Items", [])
+
+        # Find completed runs that aren't the current one
+        completed = [
+            i for i in items
+            if i.get("status") == "completed"
+            and i.get("run_id") != current_run_id
+            and i.get("best_strategy")
+        ]
+
+        if not completed:
+            return None
+
+        # Pick the one with the highest best_score
+        best_run = max(completed, key=lambda x: float(str(x.get("best_score", 0))))
+        strategy = best_run.get("best_strategy", "")
+        score = float(str(best_run.get("best_score", 0)))
+
+        if strategy:
+            print(f"[Orchestrator] Previous best: {best_run['run_id']} ({score:.2f} pts/GW)")
+            return strategy
+
+        return None
+
+    except Exception as e:
+        print(f"[Orchestrator] Error loading previous strategy: {e}")
+        return None
+
+
 def handler(event, context):
     """
     Lambda handler — triggered by EventBridge every N minutes.
@@ -137,11 +177,19 @@ def handler(event, context):
     state = get_state(run_id)
     if not state:
         print(f"[Orchestrator] No state found for {run_id}. Creating initial state.")
+
+        # Load best strategy from previous completed run (compound improvements)
+        previous_strategy = _get_previous_best_strategy(run_id)
+        if previous_strategy:
+            print(f"[Orchestrator] Seeding with previous best strategy ({len(previous_strategy)} chars)")
+        else:
+            print(f"[Orchestrator] No previous strategy found, starting from baseline")
+
         state = {
             "run_id": run_id,
             "iteration": 0,
             "max_iterations": int(os.environ.get("MAX_ITERATIONS", "50")),
-            "best_strategy": None,
+            "best_strategy": previous_strategy,
             "best_score": 0.0,
             "baseline_score": 0.0,
             "failed_attempts": [],
