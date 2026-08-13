@@ -123,11 +123,10 @@ def disable_rule():
         print(f"Could not disable rule: {e}")
 
 
-def _get_previous_best_strategy(current_run_id: str) -> str | None:
+def _get_previous_best_strategy(current_run_id: str) -> tuple[str | None, float]:
     """
-    Find the best strategy from any previously completed run.
-    This ensures each new run builds on top of the last improvement
-    rather than starting from scratch (compound RSI).
+    Find the best strategy and score from any previously completed run.
+    Returns (strategy_code, best_score) so the new run uses both.
     """
     try:
         dynamodb = boto3.resource("dynamodb", region_name=REGION)
@@ -145,7 +144,7 @@ def _get_previous_best_strategy(current_run_id: str) -> str | None:
         ]
 
         if not completed:
-            return None
+            return None, 0.0
 
         # Pick the one with the highest best_score
         best_run = max(completed, key=lambda x: float(str(x.get("best_score", 0))))
@@ -154,13 +153,13 @@ def _get_previous_best_strategy(current_run_id: str) -> str | None:
 
         if strategy:
             print(f"[Orchestrator] Previous best: {best_run['run_id']} ({score:.2f} pts/GW)")
-            return strategy
+            return strategy, score
 
-        return None
+        return None, 0.0
 
     except Exception as e:
         print(f"[Orchestrator] Error loading previous strategy: {e}")
-        return None
+        return None, 0.0
 
 
 def handler(event, context):
@@ -179,19 +178,20 @@ def handler(event, context):
         print(f"[Orchestrator] No state found for {run_id}. Creating initial state.")
 
         # Load best strategy from previous completed run (compound improvements)
-        previous_strategy = _get_previous_best_strategy(run_id)
+        previous_strategy, previous_score = _get_previous_best_strategy(run_id)
         if previous_strategy:
-            print(f"[Orchestrator] Seeding with previous best strategy ({len(previous_strategy)} chars)")
+            print(f"[Orchestrator] Seeding with previous best: {previous_score:.2f} pts/GW ({len(previous_strategy)} chars)")
         else:
             print(f"[Orchestrator] No previous strategy found, starting from baseline")
+            previous_score = 0.0
 
         state = {
             "run_id": run_id,
             "iteration": 0,
             "max_iterations": int(os.environ.get("MAX_ITERATIONS", "50")),
             "best_strategy": previous_strategy,
-            "best_score": 0.0,
-            "baseline_score": 0.0,
+            "best_score": previous_score,
+            "baseline_score": previous_score,
             "failed_attempts": [],
             "history": [],
             "status": "running",
@@ -260,32 +260,31 @@ def handler(event, context):
     new_score = result.get("best_score", 0)
     improvement = result.get("improvement", 0)
 
+    # On first iteration without a seed, set baseline from AgentCore result
     if state["baseline_score"] == 0:
         state["baseline_score"] = result.get("baseline_score", new_score)
+        state["best_score"] = result.get("baseline_score", new_score)
 
-    if improvement > 0 and result.get("improvements_found", 0) > 0:
+    # Only accept if the new score BEATS our current best (absolute comparison)
+    if new_score > state["best_score"]:
+        actual_improvement = new_score - state["best_score"]
         state["best_strategy"] = result["best_strategy"]
         state["best_score"] = new_score
         state["history"].append({
             "iteration": current_iter,
             "private_score": new_score,
             "kept": True,
-            "improvement": improvement,
+            "improvement": actual_improvement,
         })
-        print(f"[Orchestrator] IMPROVEMENT found! Score: {new_score:.2f} (+{improvement:.2f})")
+        print(f"[Orchestrator] IMPROVEMENT! {state['best_score'] - actual_improvement:.2f} → {new_score:.2f} (+{actual_improvement:.2f})")
     else:
-        if new_score > 0 and state["best_score"] == 0:
-            # First iteration — set baseline
-            state["best_score"] = new_score
-            state["best_strategy"] = result.get("best_strategy")
-
         state["history"].append({
             "iteration": current_iter,
             "private_score": new_score,
             "kept": False,
-            "reason": "no_improvement",
+            "reason": f"no_improvement (got {new_score:.2f}, need >{state['best_score']:.2f})",
         })
-        print(f"[Orchestrator] No improvement. Score: {new_score:.2f}")
+        print(f"[Orchestrator] Rejected. Score {new_score:.2f} vs best {state['best_score']:.2f}")
 
     # Save state
     put_state(state)
