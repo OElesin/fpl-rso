@@ -123,6 +123,32 @@ def disable_rule():
         print(f"Could not disable rule: {e}")
 
 
+# Tournament models — each gets equal iterations
+TOURNAMENT_MODELS = [
+    "us.anthropic.claude-sonnet-5",
+    "us.anthropic.claude-opus-5",
+    "us.anthropic.claude-fable-5",
+    "us.deepseek.r1-v1:0",
+    "us.amazon.nova-premier-v1:0",
+]
+
+ITERS_PER_MODEL = 10  # 5 models × 10 iterations = 50 total
+
+
+def _select_model(state: dict) -> str:
+    """
+    Tournament mode: rotate models evenly across iterations.
+    Each model gets ITERS_PER_MODEL iterations.
+    Tracks which model produced each result for analysis.
+    """
+    current_iter = state.get("iteration", 1)
+    model_index = (current_iter - 1) // ITERS_PER_MODEL
+    model_index = min(model_index, len(TOURNAMENT_MODELS) - 1)
+    model = TOURNAMENT_MODELS[model_index]
+    print(f"[Tournament] Iter {current_iter}: using {model}")
+    return model
+
+
 def _get_previous_best_strategy(current_run_id: str) -> str | None:
     """
     Find the best strategy CODE from any previously completed run.
@@ -223,7 +249,7 @@ def handler(event, context):
     payload = {
         "iterations": 1,  # Always 1 per invocation
         "seasons": state["seasons"],
-        "model": state["model"],
+        "model": _select_model(state),
         "region": REGION,
         "improvement_threshold": 0.1,
         "public_gw_ratio": 0.6,
@@ -277,16 +303,18 @@ def handler(event, context):
             "private_score": new_score,
             "kept": True,
             "improvement": actual_improvement,
+            "model": payload["model"],
         })
-        print(f"[Orchestrator] IMPROVEMENT! {new_score - actual_improvement:.2f} → {new_score:.2f} (+{actual_improvement:.2f})")
+        print(f"[Orchestrator] IMPROVEMENT! {new_score - actual_improvement:.2f} → {new_score:.2f} (+{actual_improvement:.2f}) [{payload['model']}]")
     else:
         state["history"].append({
             "iteration": current_iter,
             "private_score": new_score,
             "kept": False,
             "reason": f"no_improvement (got {new_score:.2f}, need >{state['best_score']:.2f})",
+            "model": payload["model"],
         })
-        print(f"[Orchestrator] Rejected. Score {new_score:.2f} vs best {state['best_score']:.2f}")
+        print(f"[Orchestrator] Rejected. Score {new_score:.2f} vs best {state['best_score']:.2f} [{payload['model']}]")
 
     # Save state
     put_state(state)
