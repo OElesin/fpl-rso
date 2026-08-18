@@ -141,7 +141,7 @@ def _select_model(state: dict) -> str:
     Each model gets ITERS_PER_MODEL iterations.
     Tracks which model produced each result for analysis.
     """
-    current_iter = state.get("iteration", 1)
+    current_iter = int(state.get("iteration", 1))
     model_index = (current_iter - 1) // ITERS_PER_MODEL
     model_index = min(model_index, len(TOURNAMENT_MODELS) - 1)
     model = TOURNAMENT_MODELS[model_index]
