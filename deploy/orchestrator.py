@@ -123,30 +123,55 @@ def disable_rule():
         print(f"Could not disable rule: {e}")
 
 
-# Tournament models — each gets equal iterations
-TOURNAMENT_MODELS = [
-    "us.anthropic.claude-sonnet-5",
-    "us.anthropic.claude-opus-5",
-    "us.anthropic.claude-fable-5",
-    "us.deepseek.r1-v1:0",
-    "us.amazon.nova-premier-v1:0",
-]
-
-ITERS_PER_MODEL = 10  # 5 models × 10 iterations = 50 total
+# Model strategy: Sonnet for first 40 iters (cheap exploration),
+# then Opus for remaining iters (plateau-breaking).
+# Opus phase uses early-stopping: stops as soon as an improvement is found.
+MODEL_SONNET = "us.anthropic.claude-sonnet-5"
+MODEL_OPUS = "us.anthropic.claude-opus-5"
+SONNET_ITERS = 40  # First 40 iterations use Sonnet (~$8)
+# Remaining iterations (41-50) use Opus with early-stop (~$17 max, often less)
 
 
 def _select_model(state: dict) -> str:
     """
-    Tournament mode: rotate models evenly across iterations.
-    Each model gets ITERS_PER_MODEL iterations.
-    Tracks which model produced each result for analysis.
+    Hybrid strategy: Sonnet first (cheap), Opus when stuck (powerful).
+    Opus phase has early-stopping — exits as soon as improvement is found.
     """
     current_iter = int(state.get("iteration", 1))
-    model_index = (current_iter - 1) // ITERS_PER_MODEL
-    model_index = min(model_index, len(TOURNAMENT_MODELS) - 1)
-    model = TOURNAMENT_MODELS[model_index]
-    print(f"[Tournament] Iter {current_iter}: using {model}")
+
+    if current_iter <= SONNET_ITERS:
+        model = MODEL_SONNET
+        print(f"[Model] Iter {current_iter}: {model} (exploration phase)")
+    else:
+        model = MODEL_OPUS
+        print(f"[Model] Iter {current_iter}: {model} (plateau-breaking phase)")
+
     return model
+
+
+def _should_early_stop(state: dict) -> bool:
+    """
+    Early-stop during Opus phase: if Opus found an improvement, stop the run.
+    Saves cost — no need to keep running expensive Opus after it breaks through.
+    """
+    current_iter = int(state.get("iteration", 1))
+
+    # Only apply early-stop during Opus phase
+    if current_iter <= SONNET_ITERS:
+        return False
+
+    # Check if any improvement was found during Opus phase (iter > SONNET_ITERS)
+    history = state.get("history", [])
+    opus_improvements = [
+        h for h in history
+        if h.get("kept") and int(str(h.get("iteration", 0))) > SONNET_ITERS
+    ]
+
+    if opus_improvements:
+        print(f"[Model] Early-stop: Opus found improvement, stopping run to save cost")
+        return True
+
+    return False
 
 
 def _get_previous_best_strategy(current_run_id: str) -> str | None:
@@ -318,6 +343,14 @@ def handler(event, context):
 
     # Save state
     put_state(state)
+
+    # Early-stop check: if Opus found an improvement, stop the run to save cost
+    if _should_early_stop(state):
+        state["status"] = "completed"
+        put_state(state)
+        disable_rule()
+        print(f"[Orchestrator] Early-stop triggered. Best: {state['best_score']:.2f} pts/GW")
+        return {"status": "early_stop", "best_score": state["best_score"]}
 
     return {
         "status": "iteration_complete",
