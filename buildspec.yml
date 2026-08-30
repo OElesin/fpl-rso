@@ -66,7 +66,9 @@ phases:
                   break
           "
           
-          # Reset DynamoDB state
+          # Start a fresh run. We KEEP prior completed runs so the orchestrator
+          # can seed the new run from the best previous strategy (compound learning).
+          # Only stale non-completed runs from a prior aborted cycle are removed.
           RUN_ID="run-$(date +%Y%m%d-%H%M)"
           echo "Starting run: $RUN_ID"
           python -c "
@@ -74,16 +76,31 @@ phases:
           dynamodb = boto3.resource('dynamodb', region_name='$REGION')
           table = dynamodb.Table('$STATE_TABLE')
           scan = table.scan()
+          removed = 0
           for item in scan.get('Items', []):
-              table.delete_item(Key={'run_id': item['run_id']})
-          print('State cleared')
+              # Preserve completed runs (they hold best strategies used for seeding).
+              # Remove any leftover 'running'/'failed' runs from an aborted cycle.
+              if item.get('status') != 'completed':
+                  table.delete_item(Key={'run_id': item['run_id']})
+                  removed += 1
+          print(f'Cleared {removed} stale non-completed run(s); completed runs preserved for seeding')
           "
           
-          # Update Lambda orchestrator config
+          # Update Lambda orchestrator config (RUN_ID is the fallback if no target input)
           aws lambda update-function-configuration \
             --function-name $LAMBDA_ORCHESTRATOR \
             --environment "Variables={STATE_TABLE=$STATE_TABLE,AGENTCORE_ARN=arn:aws:bedrock-agentcore:$REGION:$ACCOUNT:runtime/$AGENTCORE_ID,AWS_REGION_NAME=$REGION,EVENTBRIDGE_RULE=$RULE_NAME,RUN_ID=$RUN_ID,MAX_ITERATIONS=$ITERATIONS,MODEL=$MODEL,SEASONS=$SEASONS}" \
             --region $REGION > /dev/null
+          
+          # CRITICAL: update the iteration rule's target INPUT to the new RUN_ID.
+          # The orchestrator prioritizes event['run_id'] over the env var, so a stale
+          # target input would make it process an already-completed run and stop the loop.
+          echo "Pointing iteration rule target at $RUN_ID"
+          aws events put-targets \
+            --rule $RULE_NAME \
+            --region $REGION \
+            --targets "[{\"Id\":\"fpl-rso-orchestrator\",\"Arn\":\"arn:aws:lambda:$REGION:$ACCOUNT:function:$LAMBDA_ORCHESTRATOR\",\"Input\":\"{\\\"run_id\\\": \\\"$RUN_ID\\\"}\"}]" \
+            > /dev/null
           
           # Enable EventBridge rule to start the loop
           aws events enable-rule --name $RULE_NAME --region $REGION
