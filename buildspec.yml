@@ -40,30 +40,47 @@ phases:
         else
           echo "=== PHASE: Build image + kick off RSI loop ==="
           
-          # Build and push Docker image
-          echo "Building Docker image..."
-          docker build -f Dockerfile -t fpl-rso .
-          docker tag fpl-rso:latest $ECR_REPO:latest
-          docker push $ECR_REPO:latest
+          # Build and push Docker image.
+          # AgentCore Runtime ONLY supports arm64 — an amd64 image is rejected by
+          # update_agent_runtime with "Architecture incompatible", silently leaving
+          # the runtime on a stale/broken version. We cross-build arm64 via buildx.
+          # We also tag uniquely per build: reusing ":latest" does not reliably
+          # trigger a new AgentCore version, so we pass a unique URI to the update.
+          echo "Building arm64 Docker image..."
+          IMAGE_TAG="build-$(date +%Y%m%d-%H%M%S)"
+          docker run --privileged --rm tonistiigi/binfmt --install arm64 || true
+          docker buildx create --use --name fplrsobuilder || docker buildx use fplrsobuilder
+          docker buildx build --platform linux/arm64 \
+            -f Dockerfile \
+            -t $ECR_REPO:$IMAGE_TAG \
+            -t $ECR_REPO:latest \
+            --push .
           
-          # Update AgentCore Runtime
-          echo "Updating AgentCore..."
+          # Update AgentCore Runtime (use the UNIQUE tag so a new version is created)
+          echo "Updating AgentCore to $ECR_REPO:$IMAGE_TAG ..."
           python -c "
-          import boto3, time
+          import boto3, time, sys
           client = boto3.client('bedrock-agentcore-control', region_name='$REGION')
           client.update_agent_runtime(
               agentRuntimeId='$AGENTCORE_ID',
-              agentRuntimeArtifact={'containerConfiguration': {'containerUri': '$ECR_REPO:latest'}},
+              agentRuntimeArtifact={'containerConfiguration': {'containerUri': '$ECR_REPO:$IMAGE_TAG'}},
               roleArn='arn:aws:iam::$ACCOUNT:role/AgentCoreRuntimeRole',
               networkConfiguration={'networkMode': 'PUBLIC'},
           )
-          # Wait for READY
-          for i in range(24):
+          # Wait for READY — fail the build if it never becomes READY
+          for i in range(36):
               time.sleep(5)
-              status = client.get_agent_runtime(agentRuntimeId='$AGENTCORE_ID')['status']
+              r = client.get_agent_runtime(agentRuntimeId='$AGENTCORE_ID')
+              status = r['status']
               if status == 'READY':
-                  print(f'AgentCore READY after {(i+1)*5}s')
+                  print(f'AgentCore READY after {(i+1)*5}s (version {r[\"agentRuntimeVersion\"]})')
                   break
+              if 'FAILED' in status:
+                  print(f'AgentCore update FAILED: {status} {r.get(\"statusReason\",\"\")}')
+                  sys.exit(1)
+          else:
+              print('AgentCore did not reach READY in time')
+              sys.exit(1)
           "
           
           # Start a fresh run. We KEEP prior completed runs so the orchestrator
@@ -104,6 +121,14 @@ phases:
           
           # Enable EventBridge rule to start the loop
           aws events enable-rule --name $RULE_NAME --region $REGION
+          
+          # Point the completion checker at THIS run so it only deploys when this
+          # run completes (not any pre-existing completed run from a prior week).
+          echo "Setting completion checker WATCH_RUN_ID=$RUN_ID"
+          aws lambda update-function-configuration \
+            --function-name fpl-rso-completion-checker \
+            --environment "Variables={STATE_TABLE=$STATE_TABLE,WATCH_RUN_ID=$RUN_ID}" \
+            --region $REGION > /dev/null
           
           # Enable completion checker (polls until RSI loop finishes)
           aws events enable-rule --name fpl-rso-completion-check --region $REGION

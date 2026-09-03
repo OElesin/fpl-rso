@@ -169,17 +169,27 @@ import boto3
 import os
 
 def handler(event, context):
-    """Check if RSI loop completed, trigger bot update if so."""
+    """Check if the CURRENT RSI run completed, trigger bot update if so."""
     dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
     table = dynamodb.Table(os.environ.get("STATE_TABLE", "fpl-rso-state"))
-    
-    # Scan for completed runs
-    scan = table.scan()
-    completed = [i for i in scan.get("Items", []) if i.get("status") == "completed"]
-    
-    if not completed:
-        return {"status": "waiting"}
-    
+
+    # The specific run we're waiting for. Set by the pipeline at run start.
+    # Without this guard the checker would fire on ANY pre-existing completed
+    # run (e.g. previous weeks), deploying before the current run finishes.
+    watch_run_id = os.environ.get("WATCH_RUN_ID")
+
+    if watch_run_id:
+        resp = table.get_item(Key={"run_id": watch_run_id})
+        item = resp.get("Item")
+        if not item or item.get("status") != "completed":
+            return {"status": "waiting", "run_id": watch_run_id}
+    else:
+        # Fallback (legacy): require at least one completed run.
+        scan = table.scan()
+        completed = [i for i in scan.get("Items", []) if i.get("status") == "completed"]
+        if not completed:
+            return {"status": "waiting"}
+
     # Trigger CodeBuild to update bot
     cb = boto3.client("codebuild", region_name="us-east-1")
     cb.start_build(
@@ -193,7 +203,7 @@ def handler(event, context):
     events_client = boto3.client("events", region_name="us-east-1")
     events_client.disable_rule(Name="fpl-rso-completion-check")
     
-    return {"status": "triggered_deploy"}
+    return {"status": "triggered_deploy", "run_id": watch_run_id}
 '''
 
     # Create the completion checker Lambda
