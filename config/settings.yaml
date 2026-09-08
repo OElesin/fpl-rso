@@ -40,9 +40,10 @@ outer_loop:
 
 # Backtest settings
 backtest:
-  seasons:                    # Seasons to backtest on
+  seasons:                    # Seasons to backtest on (prior full seasons + current)
     - "2024-25"
     - "2025-26"
+    - "2026-27"               # current season (fetched live from FPL API)
   public_gw_ratio: 0.6       # Fraction of gameweeks visible to inner agent
   random_seed: 42             # Deterministic public/private split
   start_gameweek: 5           # Skip first N GWs (need form history)
@@ -56,6 +57,7 @@ data:
     - "2023-24"
     - "2024-25"
     - "2025-26"
+    - "2026-27"               # current season (live FPL API, not vaastav repo)
 
 # Output settings
 output:

@@ -17,7 +17,7 @@ env:
     RULE_NAME: fpl-rso-iteration
     MODEL: claude-sonnet-5
     ITERATIONS: "50"
-    SEASONS: '["2024-25","2025-26"]'
+    SEASONS: '["2024-25","2025-26","2026-27"]'
 
 phases:
   install:
