@@ -189,7 +189,18 @@ Your goal: rewrite the inner agent's strategy code to score MORE POINTS on held-
 - Captain selection: form-weighted, fixture-adjusted, home advantage, ceiling-based
 - Transfer logic: form decay detection, value hunting, fixture targeting
 - Lineup selection: matchup-based, minutes filter, consistency weighting
-- Chip timing: bench boost when bench is strong, TC in easy fixtures for in-form premiums
+- Chip timing: bench boost when bench is strong, TC in easy fixtures for in-form premiums.
+  NOTE: naive rules like "form > 8 -> triple captain" ignore fixture difficulty and
+  waste one-shot chips on hard fixtures — condition chip timing on fixture + form together.
+- Effective ownership (RANK GAME): FPL rank is relative — you gain rank by scoring
+  differently from the field, not just scoring high. player['ownership'] (0-100%) is
+  available in player_pool/form_data. Use inner_agent.player.rank_adjusted_score(base,
+  player, differential_weight=..., template_safety_weight=...) to tune a stance:
+  differential_weight>0 chases low-owned upside (climb rank); template_safety_weight>0
+  favors high-owned picks (protect rank). The captain selector already exposes
+  CAPTAIN_DIFFERENTIAL_WEIGHT / CAPTAIN_TEMPLATE_SAFETY_WEIGHT constants to tune, and you
+  may apply rank_adjusted_score in transfer/lineup logic too. Tune these weights and
+  measure the effect on private score.
 - Search policy: which players to evaluate as candidates
 - Risk management: when hits are worth it, how many to take
 

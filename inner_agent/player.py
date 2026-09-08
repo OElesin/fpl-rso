@@ -76,6 +76,60 @@ def ownership_differential(player: pd.Series) -> float:
     return 1.0 - (ownership / 100.0)
 
 
+# ---------------------------------------------------------------------------
+# Effective-ownership / rank-aware scoring
+#
+# FPL rank is a RELATIVE game: your rank moves based on how you score versus
+# what the field owns. A haul from a highly-owned "template" player barely
+# moves rank; the same haul from a low-owned differential moves it a lot, while
+# a template player blanking hurts less (everyone else blanks too).
+#
+# These weights are DELIBERATELY exposed so the outer RSI loop can discover the
+# right balance by rewriting the calls in strategy.py — we do NOT hardcode a
+# strong opinion here. Defaults are near-neutral so behavior is unchanged until
+# the loop tunes them.
+# ---------------------------------------------------------------------------
+
+# Default weights (near-neutral). strategy.py may override per-decision.
+DEFAULT_DIFFERENTIAL_WEIGHT = 0.0   # >0 rewards low ownership (rank chasing)
+DEFAULT_TEMPLATE_SAFETY_WEIGHT = 0.0  # >0 rewards high ownership (protect rank)
+
+
+def rank_adjusted_score(
+    base_score: float,
+    player: pd.Series,
+    differential_weight: float = DEFAULT_DIFFERENTIAL_WEIGHT,
+    template_safety_weight: float = DEFAULT_TEMPLATE_SAFETY_WEIGHT,
+) -> float:
+    """
+    Adjust a base expected-points/captaincy score by ownership to reflect the
+    relative (rank) game rather than the absolute-points game.
+
+    - differential_weight (>0): boosts LOW-owned players (upside for climbing rank).
+    - template_safety_weight (>0): boosts HIGH-owned players (defends rank vs field).
+
+    The two pull in opposite directions; the RSI loop can favor either stance
+    (aggressive differential vs safe template) or blend them. With both weights
+    at 0 (default), this returns base_score unchanged.
+
+    base_score is scaled multiplicatively so the adjustment is proportional and
+    does not swamp the underlying expected points.
+    """
+    if base_score <= 0:
+        return base_score
+
+    ownership = player.get("ownership", 50.0)
+    if pd.isna(ownership):
+        ownership = 50.0
+    own_frac = max(0.0, min(1.0, ownership / 100.0))
+
+    differential = 1.0 - own_frac          # high when rarely owned
+    template = own_frac                    # high when widely owned
+
+    multiplier = 1.0 + differential_weight * differential + template_safety_weight * template
+    return base_score * multiplier
+
+
 def captain_score(
     player: pd.Series,
     form: float,

@@ -25,7 +25,7 @@ import pandas as pd
 import numpy as np
 from dataclasses import dataclass, field
 
-from inner_agent.player import expected_points, value_score, captain_score
+from inner_agent.player import expected_points, value_score, captain_score, rank_adjusted_score
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +171,12 @@ def select_captain(
     Returns:
         (captain_id, vice_captain_id)
     """
+    # Ownership / effective-ownership stance for captaincy.
+    # FPL rank is relative: the RSI loop can tune these to chase differentials
+    # (reward low ownership) or play it safe (reward template). Both 0 = ignore.
+    CAPTAIN_DIFFERENTIAL_WEIGHT = 0.0
+    CAPTAIN_TEMPLATE_SAFETY_WEIGHT = 0.0
+
     scores = {}
     for pid in squad.players:
         player_form = form_data[form_data["player_id"] == pid]
@@ -185,7 +191,12 @@ def select_captain(
         fixture_diff = player.get("fixture_difficulty", 3)
         is_home = bool(player.get("is_home", False))
 
-        scores[pid] = captain_score(player, form, fixture_diff, is_home)
+        base = captain_score(player, form, fixture_diff, is_home)
+        scores[pid] = rank_adjusted_score(
+            base, player,
+            differential_weight=CAPTAIN_DIFFERENTIAL_WEIGHT,
+            template_safety_weight=CAPTAIN_TEMPLATE_SAFETY_WEIGHT,
+        )
 
     ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
