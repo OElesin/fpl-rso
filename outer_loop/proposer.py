@@ -287,7 +287,12 @@ def generate_candidate(
     model_kwargs = {
         "model_id": model_id,
         "region_name": region,
-        "max_tokens": 16000,
+        # Strategies can grow large (26KB+). The agent must output the FULL
+        # rewritten strategy.py in one response; 16K tokens truncated on large
+        # strategies, causing generate_candidate to return None every iteration
+        # (observed: 50 iters, 0 candidates produced). Claude 4/5 support 64K
+        # output tokens — 32K gives ample headroom for a full rewrite + reasoning.
+        "max_tokens": 32000,
         "additional_request_fields": {},
     }
 
