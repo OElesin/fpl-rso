@@ -229,6 +229,7 @@ BEDROCK_MODELS = {
     "nova-premier": "us.amazon.nova-premier-v1:0",
     "llama4-maverick": "us.meta.llama4-maverick-17b-instruct-v1:0",
     "llama4-scout": "us.meta.llama4-scout-17b-instruct-v1:0",
+    "gpt-6-astra": "us.openai.gpt-6-astra",
 }
 
 DEFAULT_MODEL = "claude-sonnet-5"
@@ -296,8 +297,12 @@ def generate_candidate(
         "additional_request_fields": {},
     }
 
-    # Some models (e.g., claude-sonnet-5) don't support temperature
-    if "sonnet-5" not in model_id and "opus-5" not in model_id:
+    # Some models don't support the temperature field (Claude 5 series, OpenAI GPT-6).
+    if (
+        "sonnet-5" not in model_id
+        and "opus-5" not in model_id
+        and "openai" not in model_id
+    ):
         model_kwargs["temperature"] = 0.7
 
     # Increase timeout for large code generation responses
