@@ -1,0 +1,5 @@
+{"model": "grok-4.6", "attempt": 1, "seed_score": 54.3226, "status": "not_improved", "delta": -3.1935, "private_score": 51.129, "latency_s": 250.6, "input_tokens": 42547, "output_tokens": 38679, "candidate_chars": 51027, "error": null}
+{"model": "grok-4.6", "attempt": 2, "seed_score": 54.3226, "status": "not_improved", "delta": -0.8387, "private_score": 53.4839, "latency_s": 250.1, "input_tokens": 28315, "output_tokens": 38586, "candidate_chars": 50868, "error": null}
+{"model": "grok-4.6", "attempt": 3, "seed_score": 54.3226, "status": "not_improved", "delta": -0.4516, "private_score": 53.871, "latency_s": 221.6, "input_tokens": 27567, "output_tokens": 37954, "candidate_chars": 49094, "error": null}
+{"model": "grok-4.6", "attempt": 4, "seed_score": 54.3226, "status": "not_improved", "delta": 0.0645, "private_score": 54.3871, "latency_s": 259.6, "input_tokens": 27595, "output_tokens": 39866, "candidate_chars": 49121, "error": null}
+{"model": "grok-4.6", "attempt": 5, "seed_score": 54.3226, "status": "improved", "delta": 0.5806, "private_score": 54.9032, "latency_s": 232.9, "input_tokens": 28020, "output_tokens": 37458, "candidate_chars": 49990, "error": null}

@@ -19,6 +19,27 @@ from strands import Agent, tool
 from strands.models import BedrockModel
 
 
+class _NoReasoningHistoryBedrockModel(BedrockModel):
+    """
+    BedrockModel that drops reasoning blocks from assistant messages it sends back.
+
+    xAI Grok on Bedrock returns a reasoningContent block, but REJECTS that same
+    block when it appears in an assistant message of the next request
+    ("This model doesn't support the reasoningContent.reasoningText.text field
+    for assistant messages"). A multi-step tool-using agent resends history after
+    every tool call, so without this every Grok run dies on its second turn.
+    """
+
+    def _format_bedrock_messages(self, messages):
+        cleaned = super()._format_bedrock_messages(messages)
+        for msg in cleaned:
+            if msg.get("role") == "assistant":
+                msg["content"] = [
+                    b for b in msg.get("content", []) if "reasoningContent" not in b
+                ] or [{"text": "(continuing)"}]
+        return cleaned
+
+
 # ---------------------------------------------------------------------------
 # Shared state — populated before each agent invocation
 # ---------------------------------------------------------------------------
@@ -31,6 +52,9 @@ _context = {
     "max_iterations": 0,
     "candidate_code": None,  # set by the agent via write_candidate tool
 }
+
+# Token usage of the most recent generate_candidate() call (best-effort).
+LAST_USAGE: dict = {}
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +254,9 @@ BEDROCK_MODELS = {
     "llama4-maverick": "us.meta.llama4-maverick-17b-instruct-v1:0",
     "llama4-scout": "us.meta.llama4-scout-17b-instruct-v1:0",
     "gpt-6-astra": "us.openai.gpt-6-astra",
+    "gpt-6.2-astra": "us.openai.gpt-6.2-astra",
+    "grok-4.7": "us.xai.grok-4.7",
+    "grok-4.6": "us.xai.grok-4.6",
 }
 
 DEFAULT_MODEL = "claude-sonnet-5"
@@ -297,13 +324,21 @@ def generate_candidate(
         "additional_request_fields": {},
     }
 
-    # Some models don't support the temperature field (Claude 5 series, OpenAI GPT-6).
+    # Some models don't support the temperature field (Claude 5 series, OpenAI GPT-6,
+    # xAI Grok) — Bedrock rejects it with a ValidationException.
     if (
         "sonnet-5" not in model_id
         and "opus-5" not in model_id
         and "openai" not in model_id
+        and "xai" not in model_id
     ):
         model_kwargs["temperature"] = 0.7
+
+    # xAI Grok spends output tokens on reasoning before the answer, from the same
+    # budget as the ~30KB strategy rewrite: 32K ran out mid-answer (observed:
+    # "maximum token limit", 539s). Bedrock accepts up to 128K for Grok.
+    if "xai" in model_id:
+        model_kwargs["max_tokens"] = 64000
 
     # Increase timeout for large code generation responses
     import botocore.config
@@ -312,7 +347,11 @@ def generate_candidate(
         connect_timeout=30,
     )
 
-    bedrock_model = BedrockModel(**model_kwargs)
+    bedrock_model = (
+        _NoReasoningHistoryBedrockModel(**model_kwargs)
+        if "xai" in model_id
+        else BedrockModel(**model_kwargs)
+    )
 
     # Create the Strands agent with tools
     agent = Agent(
@@ -330,11 +369,22 @@ def generate_candidate(
 
     # Run the agent
     try:
-        agent(
+        result = agent(
             "Improve the FPL strategy. Follow your workflow: read the code, "
             "analyze results, check failed attempts, draft an improvement, "
             "validate it, and submit it via write_candidate."
         )
+
+        # Record token usage for callers that want cost/efficiency numbers
+        # (e.g. model comparisons). Best-effort; never affects the result.
+        try:
+            usage = result.metrics.accumulated_usage
+            LAST_USAGE.clear()
+            LAST_USAGE.update(
+                {k: int(usage.get(k, 0)) for k in ("inputTokens", "outputTokens", "totalTokens")}
+            )
+        except Exception:
+            LAST_USAGE.clear()
 
         # Return whatever the agent submitted
         return _context["candidate_code"]

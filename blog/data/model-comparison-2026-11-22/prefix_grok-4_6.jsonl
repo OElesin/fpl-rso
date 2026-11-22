@@ -1,0 +1,5 @@
+{"model": "grok-4.6", "attempt": 1, "seed_score": 54.3226, "status": "no_candidate", "delta": null, "private_score": null, "latency_s": 2.2, "input_tokens": null, "output_tokens": null, "candidate_chars": null, "error": null}
+{"model": "grok-4.6", "attempt": 2, "seed_score": 54.3226, "status": "no_candidate", "delta": null, "private_score": null, "latency_s": 2.4, "input_tokens": null, "output_tokens": null, "candidate_chars": null, "error": null}
+{"model": "grok-4.6", "attempt": 3, "seed_score": 54.3226, "status": "no_candidate", "delta": null, "private_score": null, "latency_s": 2.1, "input_tokens": null, "output_tokens": null, "candidate_chars": null, "error": null}
+{"model": "grok-4.6", "attempt": 4, "seed_score": 54.3226, "status": "no_candidate", "delta": null, "private_score": null, "latency_s": 2.3, "input_tokens": null, "output_tokens": null, "candidate_chars": null, "error": null}
+{"model": "grok-4.6", "attempt": 5, "seed_score": 54.3226, "status": "no_candidate", "delta": null, "private_score": null, "latency_s": 1.9, "input_tokens": null, "output_tokens": null, "candidate_chars": null, "error": null}
