@@ -383,3 +383,32 @@ def load_strategy_from_file(filepath: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def evaluate_strategy_code(config: BacktestConfig, seasons_data, code: str):
+    """
+    Score a strategy given its SOURCE CODE, using the same load-and-evaluate
+    path that candidate rewrites go through.
+
+    The RSI loop must measure its baseline this way. Previously the baseline was
+    evaluate_agent(config, data) with no strategy module, which scores the repo
+    default (~46) instead of the seed strategy actually being improved (~54).
+    Every weekly run then looked like a +17% win simply because any candidate
+    derived from the seed beat the default, even when it was WORSE than the seed.
+    """
+    import tempfile
+    import os
+
+    fd, path = tempfile.mkstemp(suffix=".py", prefix="seed_strategy_")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(code)
+        module = load_strategy_from_file(path)
+        if module is None:
+            raise RuntimeError("strategy module failed to load")
+        return evaluate_agent(config, seasons_data, module)
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass

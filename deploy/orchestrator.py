@@ -199,8 +199,13 @@ def _get_previous_best_strategy(current_run_id: str) -> str | None:
         if not completed:
             return None
 
-        # Pick the one with the highest best_score
-        best_run = max(completed, key=lambda x: float(str(x.get("best_score", 0))))
+        # Seed from the MOST RECENT completed run, not the highest recorded score.
+        # Scores are measured on different data each week (the current season
+        # grows), so they are not comparable across runs: "max best_score" froze
+        # on one old peak and every later run restarted from that same seed.
+        # With the baseline now measured on the seed itself, each run's best is
+        # >= its seed on that run's data, so the latest run is the best-known.
+        best_run = max(completed, key=lambda x: str(x.get("updated_at", "")))
         strategy = best_run.get("best_strategy", "")
         score = float(str(best_run.get("best_score", 0)))
 

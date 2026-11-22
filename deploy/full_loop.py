@@ -43,7 +43,13 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from data.fetcher import fetch_all
 from data.loader import load_seasons
-from eval.backtest import evaluate_agent, BacktestConfig, BacktestResult, load_strategy_from_file
+from eval.backtest import (
+    evaluate_agent,
+    evaluate_strategy_code,
+    BacktestConfig,
+    BacktestResult,
+    load_strategy_from_file,
+)
 from outer_loop.proposer import generate_candidate, validate_candidate
 
 app = BedrockAgentCoreApp()
@@ -118,7 +124,7 @@ def invoke(payload: dict) -> dict:
             public_gw_ratio=public_gw_ratio,
             random_seed=random_seed,
         )
-        baseline_result = evaluate_agent(bt_config, seasons_data)
+        baseline_result = evaluate_strategy_code(bt_config, seasons_data, current_code)
         baseline_score = baseline_result.private_score
 
         logger.info(f" Baseline: public={baseline_result.public_score:.2f}, "

@@ -50,6 +50,16 @@ def main():
     print(f"  Run: {run_id}")
     print(f"  Score: {baseline:.2f} → {best_score:.2f} pts/GW")
 
+    # Deploy guard: only ship a strategy that beat its seed on this run's data.
+    # `baseline` is now the SEED's score, and a run that kept no improvement
+    # leaves best_strategy == the seed (already the deployed strategy), so there
+    # is nothing new to deploy — and never a risk of replacing it with a worse one.
+    kept = [h for h in state.get("history", []) if h.get("kept")]
+    if not kept or best_score <= baseline:
+        print(f"  No improvement over seed ({len(kept)} kept, "
+              f"{baseline:.2f} → {best_score:.2f}). Keeping the deployed strategy.")
+        return
+
     if not strategy:
         print("ERROR: No strategy in state")
         sys.exit(1)
